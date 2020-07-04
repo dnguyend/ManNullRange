@@ -559,27 +559,33 @@ def test_rhess_02():
 def optim_test():
     from pymanopt import Problem
     from pymanopt.solvers import TrustRegions
-
+    from pymanopt.function import Callable
+    
     n = 1000
-    d = 100
+    d = 50
     # problem Tr(AXBX^T)
     for i in range(1):
         D = randint(1, 10, n) * 0.02 + 1
         OO = random_orthogonal(n)
         A = OO @ np.diag(D) @ OO.T
         B = make_sym_pos(d)
+        B = np.diag(randint(1, 10, d) * .2)
         
         alpha = randint(1, 10, 2) * .1
         alpha = alpha/alpha[0]
+        alpha = np.array([1, .6])
         print(alpha)
         man = RealStiefel(n, d, alpha)
 
+        @Callable
         def cost(X):
             return trace(A @ X @ B @ X.T)
-        
+
+        @Callable
         def egrad(X):
             return 2*A @ X @ B
 
+        @Callable
         def ehess(X, H):
             return 2*A @ H @ B
 
@@ -598,7 +604,7 @@ def optim_test():
             man, cost, egrad=egrad, ehess=ehess)
 
         solver = TrustRegions(maxtime=100000, maxiter=100)
-        opt = solver.solve(prob, x=XInit, Delta_bar=2500)
+        opt = solver.solve(prob, x=XInit, Delta_bar=250)
         print(cost(opt))
         if False:
             # print(opt)
@@ -622,8 +628,7 @@ def optim_test():
         solver = TrustRegions(maxtime=100000, maxiter=100)
         opt = solver.solve(prob, x=XInit, Delta_bar=250)
 
-        # man1 = RealStiefel(n, d, alpha=np.array([1, .5]))
-        man1 = RealStiefel(n, d, alpha=np.array([1, 1]))
+        man1 = RealStiefel(n, d, alpha=np.array([1, .5]))
         prob = Problem(
             man1, cost, egrad=egrad, ehess=ehess)
 
@@ -635,7 +640,7 @@ def optim_test2():
     from pymanopt import Problem
     from pymanopt.solvers import TrustRegions
 
-    n = 500
+    n = 1000
     d = 50
     # problem Tr(AXBX^T)
     for i in range(1):
@@ -711,3 +716,6 @@ def optim_test2():
         solver = TrustRegions(maxtime=100000, maxiter=100)
         opt = solver.solve(prob, x=XInit, Delta_bar=250)
         
+
+if __name__ == '__main__':
+    optim_test()

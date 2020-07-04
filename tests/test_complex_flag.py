@@ -603,28 +603,55 @@ def test_rhess_02():
     print('same as rhess_val %f' % (first-second))
 
 
+def make_simple_alpha(alpha0, beta):
+    """Make the alpha_{rl} dependent on alpha_{t0} and beta only
+    """
+    p = alpha0.shape[0]
+    alpha = zeros((p, p+1))
+    alpha[:, 0] = alpha0
+    for i in range(p):
+        for j in range(i, p):
+            alpha[i, j+1] = alpha0[i]/2 + alpha0[j]/2 + beta/2
+            alpha[j, i+1] = alpha0[i]/2 + alpha0[j]/2 + beta/2
+    return alpha
+
+    
 def optim_test():
     from pymanopt import Problem
     from pymanopt.solvers import TrustRegions
+    from pymanopt.function import Callable
 
-    n = 100
-    d = 20
+    n = 300
+
     # problem Tr(AXBX^T)
     for i in range(1):
+        dvec = np.array([0, 5, 4, 10])
+        dvec[0] = n - dvec[1:].sum()
+        d = dvec[1:].sum()
+
         alpha = randint(1, 10, 2) * .1
         D = randint(1, 10, n) * 0.02 + 1
         OO = random_orthogonal(n)
         A = OO @ np.diag(D) @ OO.T.conjugate()
         B = make_sym_pos(d)
 
-        man = ComplexFlag(n, d, alpha)
+        p = dvec.shape[0]-1
+        alpha = randint(1, 10, (p, p+1)) * .1
+        alpha0 = randint(1, 10, (p))
+        # alpha0 = randint(1, 2, (p))
+        alpha = make_simple_alpha(alpha0, 0)
 
+        man = ComplexFlag(dvec, alpha)
+
+        @Callable
         def cost(X):
             return trace(A @ X @ B @ X.T.conjugate()).real
-        
+
+        @Callable
         def egrad(X):
             return 2*A @ X @ B
-        
+
+        @Callable
         def ehess(X, H):
             return 2*A @ H @ B
 
@@ -645,30 +672,26 @@ def optim_test():
         solver = TrustRegions(maxtime=100000, maxiter=100)
         opt = solver.solve(prob, x=XInit, Delta_bar=250)
         print(cost(opt))
-        # print(opt)
-        # double check:
-        # print(cost(opt))
-        min_val = 1e190
-        # min_X = None
-        for i in range(100):
-            Xi = man.rand()
-            c = cost(Xi)
-            if c < min_val:
-                # min_X = Xi
-                min_val = c
-            if i % 1000 == 0:
-                print('i=%d min=%f' % (i, min_val))
-        print(min_val)
-        man1 = ComplexFlag(n, d, alpha=np.array([1, 1]))
+
+        alpha0 = randint(1, 2, (p))
+        alpha1 = make_simple_alpha(alpha0, 0)
+
+        man1 = ComplexFlag(dvec, alpha=alpha1)
         prob = Problem(
             man1, cost, egrad=egrad, ehess=ehess)
 
         solver = TrustRegions(maxtime=100000, maxiter=100)
         opt = solver.solve(prob, x=XInit, Delta_bar=250)
 
-        man1 = ComplexFlag(n, d, alpha=np.array([1, .5]))
+        alpha0 = randint(1, 2, (p))
+        alpha2 = make_simple_alpha(alpha0, -1)
+        man1 = ComplexFlag(dvec, alpha=alpha2)
         prob = Problem(
             man1, cost, egrad=egrad, ehess=ehess)
 
         solver = TrustRegions(maxtime=100000, maxiter=100)
         opt = solver.solve(prob, x=XInit, Delta_bar=250)
+
+
+if __name__ == '__main__':
+    optim_test()

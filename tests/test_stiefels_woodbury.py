@@ -561,7 +561,8 @@ def test_rhess_02():
 def optim_test():
     from pymanopt import Problem
     from pymanopt.solvers import TrustRegions
-
+    from pymanopt.function import Callable
+    
     n = 100
     d = 20
     # problem Tr(AXBX^T)
@@ -575,12 +576,15 @@ def optim_test():
             n, d, A=np.diag(D),
             B=np.diag(np.diagonal(B)))
 
+        @Callable
         def cost(X):
             return trace(A @ X @ B @ X.T)
-        
+
+        @Callable
         def egrad(X):
             return 2*A @ X @ B
 
+        @Callable
         def ehess(X, H):
             return 2*A @ H @ B
 
@@ -596,7 +600,7 @@ def optim_test():
         prob = Problem(
             man, cost, egrad=egrad, ehess=ehess)
 
-        solver = TrustRegions(maxtime=100000, maxiter=200)
+        solver = TrustRegions(maxtime=100000, maxiter=100)
         man.retr_method = 'geo'
         opt = solver.solve(prob, x=XInit, Delta_bar=250)
         print(cost(opt))
@@ -620,3 +624,7 @@ def optim_test():
         man1.retr_method = 'svd'
         solver1 = TrustRegions(maxtime=100000, maxiter=100)
         opt1 = solver1.solve(prob1, x=XInit, Delta_bar=250)
+
+
+if __name__ == '__main__':
+    optim_test()

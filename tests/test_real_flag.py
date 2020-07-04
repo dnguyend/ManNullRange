@@ -596,16 +596,29 @@ def test_rhess_02():
     print('same as rhess_val %f' % (first-second))
 
 
+def make_simple_alpha(alpha0, beta):
+    """Make the alpha_{rl} dependent on alpha_{t0} and beta only
+    """
+    p = alpha0.shape[0]
+    alpha = zeros((p, p+1))
+    alpha[:, 0] = alpha0
+    for i in range(p):
+        for j in range(i, p):
+            alpha[i, j+1] = alpha0[i]/2 + alpha0[j]/2 + beta/2
+            alpha[j, i+1] = alpha0[i]/2 + alpha0[j]/2 + beta/2
+    return alpha
+
+    
 def optim_test():
     from pymanopt import Problem
     from pymanopt.solvers import TrustRegions
+    from pymanopt.function import Callable
 
     n = 1000
 
     # problem Tr(AXBX^T)
     for i in range(1):
-        alpha = randint(1, 10, 2) * .1
-        dvec = np.array([10, 3, 2, 3])
+        dvec = np.array([0, 30, 2, 1])
         dvec[0] = 1000 - dvec[1:].sum()
         d = dvec[1:].sum()
         D = randint(1, 10, n) * 0.02 + 1
@@ -615,19 +628,25 @@ def optim_test():
         B = make_sym_pos(d)
         p = dvec.shape[0]-1
         alpha = randint(1, 10, (p, p+1)) * .1
+        alpha0 = randint(1, 10, (p))
+        # alpha0 = randint(1, 2, (p))
+        alpha = make_simple_alpha(alpha0, 0)
         man = RealFlag(dvec, alpha=alpha)
 
+        @Callable
         def cost(X):
             return trace(A @ X @ B @ X.T)
         
+        @Callable
         def egrad(X):
             return 2*A @ X @ B
 
+        @Callable
         def ehess(X, H):
             return 2*A @ H @ B
 
-        X = man.rand()
         if False:
+            X = man.rand()
             xi = man.randvec(X)
             d1 = num_deriv(man, X, xi, cost)
             d2 = trace(egrad(X) @ xi.T)
@@ -672,3 +691,8 @@ def optim_test():
 
         solver = TrustRegions(maxtime=100000, maxiter=100)
         opt = solver.solve(prob, x=XInit, Delta_bar=250)
+
+
+if __name__ == '__main__':
+    optim_test()
+        

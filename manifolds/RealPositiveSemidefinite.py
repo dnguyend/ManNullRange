@@ -122,6 +122,7 @@ class psd_ambient(object):
 
 class RealPositiveSemidefinite(NullRangeManifold):
     def __init__(self, n, p, alpha=None, beta=1):
+        self._point_layout = 1
         self.n = n
         self.p = p
         # dm_St, dm_P, cdm_St, cdm_P, tdim_St, tdim_P

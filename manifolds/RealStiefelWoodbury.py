@@ -3,7 +3,7 @@ from __future__ import division
 from .NullRangeManifold import NullRangeManifold
 import numpy.linalg as la
 import numpy as np
-from numpy import trace
+from numpy import trace, zeros_like
 from numpy.random import randn
 from . import tools
 
@@ -23,6 +23,7 @@ class RealStiefelWoodbury(NullRangeManifold):
     """Stiefel with metric Trace((AH+XBX.TH)G)
     """
     def __init__(self, n, d, A, B):
+        self._point_layout = 1
         self.n = n
         self.d = d
         self._dim, self._codim, _ = _calc_dim(n, d)
@@ -40,6 +41,9 @@ class RealStiefelWoodbury(NullRangeManifold):
     def __str__(self):
         return "real_stiefel manifold n=%d d=%d alpha=str(alpha)" % (
             self.n, self.d, str(self.alpha))
+
+    def zerovec(self, X):
+        return zeros_like(X)
 
     def base_inner_ambient(X, eta1, eta2):
         return trace(eta1.T @ eta2)

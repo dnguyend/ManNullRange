@@ -23,6 +23,7 @@ def _calc_dim(dvec):
 
 class ComplexFlag(Manifold):
     def __init__(self, dvec, alpha=None):
+        self._point_layout = 1
         self.dvec = np.array(dvec)
         self.n = dvec.sum()
         self.d = dvec[1:].sum()

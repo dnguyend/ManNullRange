@@ -755,9 +755,11 @@ def test_rhess_02():
     
 
 def solve_dist_with_man(man, A, X0, maxiter, check_deriv=False):
+    import pymanopt
     from pymanopt import Problem
     from pymanopt.solvers import TrustRegions
 
+    @pymanopt.function.Callable
     def cost(S):
         """
         if not(S.P.dtype == np.float):
@@ -768,10 +770,12 @@ def solve_dist_with_man(man, A, X0, maxiter, check_deriv=False):
         # print('val=%f' % val)
         return val
 
+    @pymanopt.function.Callable
     def egrad(S):
         return psd_ambient(-4*A @ S.Y @ S.P,
                            2*(S.P-S.Y.T.conjugate() @ A @ S.Y))
 
+    @pymanopt.function.Callable
     def ehess(S, xi):
         return psd_ambient(
             -4*A @ (xi.tY @ S.P + S.Y @ xi.tP),
@@ -829,3 +833,7 @@ def optim_test():
         print(A0)
         print(opt_mat)
     print(np.max(np.abs(A0-opt_mat)))
+
+
+if __name__ == '__main__':
+    optim_test()

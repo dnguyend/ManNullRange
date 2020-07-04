@@ -25,6 +25,7 @@ class RealFlag(Manifold):
         self.d = dvec[1:].sum()
         self._dim = _calc_dim(dvec)
         self._codim = self.d * self.n - self._dim
+        self._point_layout = 1
         cs = dvec[:].cumsum() - dvec[0]
         self._g_idx = dict((i+1, (cs[i], cs[i+1]))
                            for i in range(cs.shape[0]-1))

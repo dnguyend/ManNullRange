@@ -21,6 +21,7 @@ def _calc_dim(n, d):
     
 class RealStiefel(NullRangeManifold):
     def __init__(self, n, d, alpha=None):
+        self._point_layout = 1
         self.n = n
         self.d = d
         self._dim, self._codim, _ = _calc_dim(n, d)
@@ -121,6 +122,9 @@ class RealStiefel(NullRangeManifold):
         ret += 0.5*(ialp[1]-2*ialp[0]) * X @ (X.T @ U)
         ret -= 0.5*ialp[1]*X @ (U.T @ X)
         return ret
+
+    def zerovec(self, X):
+        return zeros_like(X)
 
     def egrad2rgrad(self, X, U):
         return self.proj_g_inv(X, U)

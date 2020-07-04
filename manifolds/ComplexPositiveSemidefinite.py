@@ -133,7 +133,7 @@ class ComplexPositiveSemidefinite(NullRangeManifold):
         self._codim_P = cdm_P
         self.tdim_St = tdim_St
         self.tdim_P = tdim_P
-
+        self._point_layout = 1
         if alpha is None:
             self.alpha = np.array([1, .5])
         else:
