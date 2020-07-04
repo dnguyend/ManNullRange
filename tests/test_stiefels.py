@@ -639,9 +639,10 @@ def optim_test():
 def optim_test2():
     from pymanopt import Problem
     from pymanopt.solvers import TrustRegions
+    from pymanopt.function import Callable
 
-    n = 1000
-    d = 50
+    n = 100
+    d = 20
     # problem Tr(AXBX^T)
     for i in range(1):
         D = randint(1, 10, n) * 0.02 + 1
@@ -653,18 +654,21 @@ def optim_test2():
         alpha = alpha/alpha[0]
         print(alpha)
         man = RealStiefel(n, d, alpha)
-
+        A2 = A @ A
+        @Callable
         def cost(X):
-            return trace(A @ X @ B @ X.T @ A @ A @ X @ B @ X.T @ A)
-        
+            return trace(A @ X @ B @ X.T @ A2 @ X @ B @ X.T @ A)
+
+        @Callable
         def egrad(X):
-            R = 4*A @ A @ X @ B @ X.T @ A @ A @ X @ B
+            R = 4*A2 @ X @ B @ X.T @ A2 @ X @ B
             return R
 
+        @Callable
         def ehess(X, H):
-            return 4*A @ A @ H @ B @ X.T @ A @ A @ X @ B +\
-                4*A @ A @ X @ B @ H.T @ A @ A @ X @ B +\
-                4*A @ A @ X @ B @ X.T @ A @ A @ H @ B
+            return 4*A2 @ H @ B @ X.T @ A2 @ X @ B +\
+                4*A2 @ X @ B @ H.T @ A2 @ X @ B +\
+                4*A2 @ X @ B @ X.T @ A2 @ H @ B
 
         if False:
             X = man.rand()
@@ -708,8 +712,7 @@ def optim_test2():
         solver = TrustRegions(maxtime=100000, maxiter=100)
         opt = solver.solve(prob, x=XInit, Delta_bar=250)
 
-        # man1 = RealStiefel(n, d, alpha=np.array([1, .5]))
-        man1 = RealStiefel(n, d, alpha=np.array([1, 1]))
+        man1 = RealStiefel(n, d, alpha=np.array([1, .5]))
         prob = Problem(
             man1, cost, egrad=egrad, ehess=ehess)
 
@@ -717,5 +720,91 @@ def optim_test2():
         opt = solver.solve(prob, x=XInit, Delta_bar=250)
         
 
+def optim_test3():
+    from pymanopt import Problem
+    from pymanopt.solvers import TrustRegions
+    from pymanopt.function import Callable
+    n = 200
+    d = 20
+    # problem Tr(AXBX^T)
+    for i in range(1):
+        B = np.diag(
+            np.concatenate([randint(1, 10, d), np.zeros(n-d)]))
+        D = randint(1, 10, n) * 0.02 + 1
+        OO = random_orthogonal(n)
+        A = OO @ np.diag(D) @ OO.T
+
+        alpha = randint(1, 10, 2)
+        alpha = alpha/alpha[0]
+        print(alpha)
+        man = RealStiefel(n, d, alpha)
+        cf = 10
+        B2 = B @ B
+
+        @Callable
+        def cost(X):
+            return cf * trace(
+                B @ X @ X.T @ B2 @ X @ X.T @ B) +\
+                trace(X.T @ A @ X)
+        
+        @Callable
+        def egrad(X):
+            R = cf*4*B2 @ X @ X.T @ B2 @ X + 2*A @ X
+            return R
+
+        @Callable
+        def ehess(X, H):
+            return 4*cf*B2 @ H @ X.T @ B2 @ X +\
+                4*cf*B2 @ X @ H.T @ B2 @ X +\
+                4*cf*B2 @ X @ X.T @ B2 @ H + 2*A @ H
+        
+        if False:
+            X = man.rand()
+            xi = man.randvec(X)
+            d1 = num_deriv(man, X, xi, cost)
+            d2 = trace(egrad(X) @ xi.T)
+            print(check_zero(d1-d2))
+            d3 = num_deriv(man, X, xi, egrad)
+            d4 = ehess(X, xi)
+            print(check_zero(d3-d4))
+            
+        XInit = man.rand()
+        prob = Problem(
+            man, cost, egrad=egrad, ehess=ehess)
+
+        solver = TrustRegions(maxtime=100000, maxiter=100)
+        opt = solver.solve(prob, x=XInit, Delta_bar=2500)
+        print(cost(opt))
+        if False:
+            # print(opt)
+            # double check:
+            # print(cost(opt))
+            min_val = 1e190
+            # min_X = None
+            for i in range(100):
+                Xi = man.rand()
+                c = cost(Xi)
+                if c < min_val:
+                    # min_X = Xi
+                    min_val = c
+                if i % 1000 == 0:
+                    print('i=%d min=%f' % (i, min_val))
+            print(min_val)
+        man1 = RealStiefel(n, d, alpha=np.array([1, 1]))
+        prob = Problem(
+            man1, cost, egrad=egrad, ehess=ehess)
+
+        solver = TrustRegions(maxtime=100000, maxiter=100)
+        opt = solver.solve(prob, x=XInit, Delta_bar=250)
+
+        man1 = RealStiefel(n, d, alpha=np.array([1, .5]))
+        # man1 = RealStiefel(n, d, alpha=np.array([1, 1]))
+        prob = Problem(
+            man1, cost, egrad=egrad, ehess=ehess)
+
+        solver = TrustRegions(maxtime=100000, maxiter=100)
+        opt = solver.solve(prob, x=XInit, Delta_bar=250)
+
+        
 if __name__ == '__main__':
     optim_test()
