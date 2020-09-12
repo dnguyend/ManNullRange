@@ -49,7 +49,7 @@ def _extended_lyapunov(alpha1, beta, P, B, Peig=None, Pevec=None):
 class psd_point(object):
     """a psd_point consists of
     pair of Y and P
-    such that S = YR^2Y
+    such that S = YPY.T
     """
     def __init__(self, Y, P):
         self._Y = Y
@@ -249,8 +249,6 @@ class RealPositiveSemidefinite(NullRangeManifold):
         return psd_ambient(
             (alpha[1] - alpha[0])*(E.tY @ xi.tY.T + xi.tY @ E.tY.T) @ S.Y,
             -self.beta*(Piv@xi.tP@Piv@E.tP@Piv + Piv@E.tP@Piv@xi.tP@Piv))
-
-        raise NotImplementedError
     
     def inner(self, X, G, H):
         """ Inner product (Riemannian metric) on the tangent space.
