@@ -1,3 +1,4 @@
+import contextlib
 from numpy.random import randn
 import numpy as np
 
@@ -13,7 +14,7 @@ def make_diag_orth(dd):
 
 
 def check_zero(mat):
-    return np.sum(np.abs(mat))
+    return np.max(np.abs(mat))
 
 
 def random_orthogonal(k):
@@ -38,3 +39,20 @@ def random_orthogonal(k):
     ph = d / np.abs(d)
     q = np.multiply(q, ph, q)
     return q
+
+
+@contextlib.contextmanager
+def printoptions(*args, **kwargs):
+    original = np.get_printoptions()
+    np.set_printoptions(*args, **kwargs)
+    try:
+        yield
+    finally:
+        np.set_printoptions(**original)
+
+
+def pprint(mat, precision=4):
+    """pretty print numpy matrix
+    """
+    with printoptions(precision=3, suppress=True):
+        print(mat)

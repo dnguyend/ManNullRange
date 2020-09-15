@@ -123,11 +123,11 @@ def calc_psd_range():
     Dgetaxi_Y = DDR(gYPxi[0], Y, eta_Y)
     Dgetaxi_P = DDR(gYPxi[1], P, eta_P)
 
-    Dgxiphi_Y = DDR(gYPeta[0], Y, phi_Y)
-    Dgxiphi_P = DDR(gYPeta[1], P, phi_P)
+    Dgxiphi_Y = DDR(gYPxi[0], Y, phi_Y)
+    Dgxiphi_P = DDR(gYPxi[1], P, phi_P)
 
     tr3 = mat_spfy(
-        ambient_inner(Y, P, Dgxiphi_Y, Dgxiphi_P, eta_Y, eta_P))
+        base_ambient_inner(Y, P, Dgxiphi_Y, Dgxiphi_P, eta_Y, eta_P))
     xcross_Y = xtrace(tr3, phi_Y)
     xcross_P = xtrace(tr3, phi_P)
         

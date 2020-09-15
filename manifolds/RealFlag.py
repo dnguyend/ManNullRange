@@ -1,5 +1,5 @@
 from __future__ import division
-from pymanopt.manifolds.manifold import Manifold
+from .NullRangeManifold import NullRangeManifold
 import numpy as np
 import numpy.linalg as la
 from numpy import trace, zeros, zeros_like
@@ -18,12 +18,33 @@ def _calc_dim(dvec):
     return s
     
 
-class RealFlag(Manifold):
+class RealFlag(NullRangeManifold):
+    """Class for a Real Flag manifold
+    Block matrix Y with Y.T @ Y = I
+    dvec is a vector defining the blocks of Y
+    dvec of size p
+    Y of dimension n*d
+
+    n = dvec.sum()
+    d = dvec[1:].sum()
+
+    Metric is defined by a sets of parameters alpha of size (p-1)p
+
+    Parameters
+    ----------
+    dvec     : vector defining the block size
+    alpha    : array of size (p-1)p, p = dvec.shape[0]
+               Defining a metric on the Flag manifold
+               alpha  > 0
+
+    """
+    
     def __init__(self, dvec, alpha=None):
         self.dvec = np.array(dvec)
         self.n = dvec.sum()
         self.d = dvec[1:].sum()
-        self._dim = _calc_dim(dvec)
+        self._name = "Real flag manifold dimension vector=(%s)" % self.dvec
+        self._dimension = _calc_dim(dvec)
         self._codim = self.d * self.n - self._dim
         self._point_layout = 1
         cs = dvec[:].cumsum() - dvec[0]
@@ -36,8 +57,11 @@ class RealFlag(Manifold):
             self.alpha[:, 0] = 1
         else:
             self.alpha = alpha
-
-    def inner_product_amb(self, X, Ba, Bb=None):
+            
+    def inner(self, X, Ba, Bb=None):
+        """ Inner product (Riemannian metric) on the tangent space.
+        The tangent space is given as a matrix of size mm_degree * m
+        """
         gdc = self._g_idx
         alpha = self.alpha
         p = self.dvec.shape[0]-1
@@ -60,18 +84,18 @@ class RealFlag(Manifold):
     
     @property
     def dim(self):
-        return self._dim
+        return self._dimension
     
     @property
     def codim(self):
         return self._codim
 
     def __str__(self):
-        return "Realization Bundle on flag manifold psi=(%s)" % self.psi
+        return self._name
 
     @property
     def typicaldist(self):
-        return np.sqrt(sum(self._dim))
+        return np.sqrt(sum(self._dimension))
 
     def dist(self, X, Y):
         """ Geodesic distance. Not implemented
@@ -256,13 +280,6 @@ class RealFlag(Manifold):
                     xi[:, bj:ej] @ (eta[:, bj:ej].T @ X[:, br:er]))
         return ret
     
-    def inner(self, X, G, H):
-        """ Inner product (Riemannian metric) on the tangent space.
-        The tangent space is given as a matrix of size mm_degree * m
-        """
-        # return inner_product_tangent
-        return self.base_inner_ambient(self.g(X, G), H)
-
     def st(self, mat):
         """The split_transpose. transpose if real, hermitian transpose if complex
         """

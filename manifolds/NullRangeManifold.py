@@ -10,26 +10,27 @@ if not hasattr(__builtins__, "xrange"):
 
 
 class NullRangeManifold(Manifold):
+    """Base class, template for NullRangeManifold
+    with formulas for Hessian and gradient
+    once the required operators are defined
+    """
     def __init__(self):
         raise NotImplementedError
 
-    def inner_product_amb(self, point, Ba, Bb=None):
-        raise NotImplementedError
-    
     @property
     def dim(self):
-        return self._dim
+        return self._dimension
     
     @property
     def codim(self):
         return self._codim
 
     def __str__(self):
-        return "Realization Bundle on flag manifold psi=(%s)" % self.psi
+        return "Base null range manifold"
 
     @property
     def typicaldist(self):
-        return np.sqrt(sum(self._dim))
+        return np.sqrt(self.dim)
 
     def dist(self, X, Y):
         """ Geodesic distance. Not implemented
@@ -95,17 +96,19 @@ class NullRangeManifold(Manifold):
     def J_g_inv_Jst(self, X, a):
         return self.J(X, self.g_inv_Jst(X, a))
 
-    def solve_J_g_inv_Jst(self, X, b):
+    def solve_J_g_inv_Jst(self, X, b, tol=1e-8):
         """ base is use CG. Unlikely to use
         """
         from scipy.sparse.linalg import cg, LinearOperator
-        
+        if tol is None:
+            tol = self.tol
+            
         def Afunc(a):
             return self._vec_range_J(
                 self.J_g_inv_Jst(X, self._unvec_range_J(a)))
         A = LinearOperator(
             dtype=float, shape=(self._codim, self._codim), matvec=Afunc)
-        res = cg(A, self._vec_range_J(b))
+        res = cg(A, self._vec_range_J(b), tol=tol)
         return self._unvec_range_J(res[0])
 
     def proj(self, X, U):

@@ -20,7 +20,14 @@ def _calc_dim(n, d):
 
     
 class RealStiefelWoodbury(NullRangeManifold):
-    """Stiefel with metric Trace((AH+XBX.TH)G)
+    """Stiefel with metric Trace(eta.T@A@eta) + Trace(X@B@X.T@eta@eta.T)
+    use CG. Not the most efficient but to show the framework handles it
+
+    Parameters
+    ----------
+    n, d     : # of rows and columns of the manifold point
+    A        : matrix of size n*n
+    B        : matrix of size d*d
     """
     def __init__(self, n, d, A, B):
         self._point_layout = 1
@@ -31,7 +38,7 @@ class RealStiefelWoodbury(NullRangeManifold):
         self.B = B
         self.retr_method = 'geo'
         
-    def inner_product_amb(self, X, eta1, eta2=None):
+    def inner(self, X, eta1, eta2=None):
         A, B = (self.A, self.B)
         if eta2 is None:
             eta2 = eta1
@@ -39,8 +46,8 @@ class RealStiefelWoodbury(NullRangeManifold):
             trace(X @ B @ X.T @ eta1 @ eta2.T)
     
     def __str__(self):
-        return "real_stiefel manifold n=%d d=%d alpha=str(alpha)" % (
-            self.n, self.d, str(self.alpha))
+        return "real_stiefel manifold with Woodbury metric n=%d d=%d" % (
+            self.n, self.d)
 
     def zerovec(self, X):
         return zeros_like(X)
@@ -82,7 +89,7 @@ class RealStiefelWoodbury(NullRangeManifold):
         B = self.B
         return xi @ (eta.T@X) @ B + eta @ (xi.T@X) @ B
     
-    def inner(self, X, G, H):
+    def _inner_(self, X, G, H):
         """ Inner product (Riemannian metric) on the tangent space.
         The tangent space is given as a matrix of size mm_degree * m
         """

@@ -2,10 +2,9 @@ from __future__ import division
 from .NullRangeManifold import NullRangeManifold
 import numpy.linalg as la
 import numpy as np
-from numpy import trace, zeros_like, bmat, zeros
-from numpy.random import randn
+from numpy import zeros_like, bmat, zeros
 from scipy.linalg import expm
-from .tools import vech, unvech
+from .tools import cvech, cunvech, crandn, rtrace
 
 
 if not hasattr(__builtins__, "xrange"):
@@ -19,9 +18,9 @@ def _calc_dim(n, d):
     return dm, cdm, tdim
 
     
-class RealStiefel(NullRangeManifold):
-    """Class for a Real Stiefel manifold
-    Block matrix Y with Y.T @ Y = I
+class ComplexStiefel(NullRangeManifold):
+    """Class for a Complex Stiefel manifold
+    Block matrix Y with Y.T.conj() @ Y = I
     Y of dimension n*d
 
     Metric is defined by 2 parameters in the array alpha
@@ -52,29 +51,29 @@ class RealStiefel(NullRangeManifold):
         alf = self.alpha
         if eta2 is None:
             eta2 = eta1
-        return alf[0]*trace(eta1.T @ eta2) + (alf[1]-alf[0]) *\
-            trace((eta1.T @ X) @ (X.T @ eta2))
+        return alf[0]*rtrace(eta1.T.conj() @ eta2) + (alf[1]-alf[0]) *\
+            rtrace((eta1.T.conj() @ X) @ (X.T.conj() @ eta2))
     
     def __str__(self):
         return self._name
 
     def base_inner_ambient(X, eta1, eta2):
-        return trace(eta1.T @ eta2)
+        return rtrace(eta1.T.conj() @ eta2)
 
     def base_inner_E_J(X, a1, a2):
-        return trace(a1 @ a2.T)
+        return rtrace(a1 @ a2.T.conj())
     
     def g(self, X, eta):
         alf = self.alpha
         return alf[0]*eta + (alf[1]-alf[0]) *\
-            X @ (X.T @ eta)
+            X @ (X.T.conj() @ eta)
 
     def g_inv(self, X, ambient):
         ialp = 1/self.alpha
-        return ialp[0]*ambient + (ialp[1]-ialp[0]) * X @ (X.T @ ambient)
+        return ialp[0]*ambient + (ialp[1]-ialp[0]) * X @ (X.T.conj() @ ambient)
     
     def J(self, X, eta):
-        return eta.T @ X + X.T @ eta
+        return eta.T.conj() @ X + X.T.conj() @ eta
 
     def Jst(self, X, a):
         return 2*X@a
@@ -84,16 +83,17 @@ class RealStiefel(NullRangeManifold):
 
     def D_g(self, X, xi, eta):
         alf = self.alpha
-        return (alf[1]-alf[0]) * (xi @ (X.T @ eta) + X @ (xi.T @ eta))
+        return (alf[1]-alf[0]) * (xi @ (X.T.conj() @ eta) +
+                                  X @ (xi.T.conj() @ eta))
 
     def christoffel_form(self, X, xi, eta):
-        ret = xi @ X.T @ eta + eta @ X.T @ xi
-        ret += X @ (xi.T @ eta + eta.T @ xi)
-        ret -= (xi @ eta.T + eta @ xi.T) @ X
+        ret = xi @ X.T.conj() @ eta + eta @ X.T.conj() @ xi
+        ret += X @ (xi.T.conj() @ eta + eta.T.conj() @ xi)
+        ret -= (xi @ eta.T.conj() + eta @ xi.T.conj()) @ X
         return 0.5*(self.alpha[1]-self.alpha[0]) * ret
 
     def D_J(self, X, xi, eta):
-        return eta.T @ xi + xi.T @ eta
+        return eta.T.conj() @ xi + xi.T.conj() @ eta
     
     def D_Jst(self, X, xi, a):
         return 2*xi@a
@@ -103,12 +103,12 @@ class RealStiefel(NullRangeManifold):
     
     def contract_D_g(self, X, xi, eta):
         alf = self.alpha
-        return (alf[1] - alf[0])*(eta @ xi.T + xi @ eta.T) @ X
+        return (alf[1] - alf[0])*(eta @ xi.T.conj() + xi @ eta.T.conj()) @ X
     
     def st(self, mat):
         """The split_transpose. transpose if real, hermitian transpose if complex
         """
-        return mat.T
+        return mat.T.conj()
 
     def J_g_inv_Jst(self, X, a):
         return 4/self.alpha[1]*a
@@ -122,19 +122,19 @@ class RealStiefel(NullRangeManifold):
         """projection. U is in ambient
         return one in tangent
         """
-        UTX = U.T @ X
-        return U - 0.5*X @ (UTX + UTX.T)
+        UTX = U.T.conj() @ X
+        return U - 0.5*X @ (UTX + UTX.T.conj())
 
     def proj_g_inv(self, X, U):
-        ret = zeros_like(X)
+        ret = zeros_like(X, dtype=np.complex)
         ialp = 1/self.alpha
         ret = ialp[0] * U
-        ret += 0.5*(ialp[1]-2*ialp[0]) * X @ (X.T @ U)
-        ret -= 0.5*ialp[1]*X @ (U.T @ X)
+        ret += 0.5*(ialp[1]-2*ialp[0]) * X @ (X.T.conj() @ U)
+        ret -= 0.5*ialp[1]*X @ (U.T.conj() @ X)
         return ret
 
     def zerovec(self, X):
-        return zeros_like(X)
+        return zeros_like(X, dtype=np.complex)
 
     def egrad2rgrad(self, X, U):
         return self.proj_g_inv(X, U)
@@ -143,11 +143,11 @@ class RealStiefel(NullRangeManifold):
         """ Ehess is the Hessian Vector Product
         """
         alpha = self.alpha
-        etaxiy = xi @ (eta.T@X) + eta@(xi.T@X)
-        egcoef = 0.5*X @ (xi.T@eta + eta.T@xi)
+        etaxiy = xi @ (eta.T.conj()@X) + eta@(xi.T.conj()@X)
+        egcoef = 0.5*X @ (xi.T.conj()@eta + eta.T.conj()@xi)
         ft = (alpha[0]-alpha[1])/alpha[0]
-        egcoef += ft*(etaxiy - X@(X.T@etaxiy))
-        return ehess_val - trace(egcoef @ egrad.T)
+        egcoef += ft*(etaxiy - X@(X.T.conj()@etaxiy))
+        return ehess_val - rtrace(egcoef @ egrad.T.conj())
     
     def ehess2rhess(self, X, egrad, ehess, H):
         """ Convert Euclidean into Riemannian Hessian.
@@ -158,18 +158,16 @@ class RealStiefel(NullRangeManifold):
           (gradient (self.st(JJ)) H) @ ((JJ @ self.st(JJ))^{-1}) @ JJ @ egrad)
         """
         alp = self.alpha
-        egrady = egrad.T @ X
-        grad_part = 0.5*H@(egrady+egrady.T)
-        egyxi = egrad@X.T@H
-        xiproj = H - X@(X.T@H)
-        grad_part += (1-alp[1]/alp[0])*(egyxi-X@(X.T@egyxi))
-        grad_part += (1-alp[1]/alp[0])*X@(egrad.T@xiproj)
+        egrady = egrad.T.conj() @ X
+        grad_part = 0.5*H@(egrady+egrady.T.conj())
+        egyxi = egrad@X.T.conj()@H
+        xiproj = H - X@(X.T.conj()@H)
+        grad_part += (1-alp[1]/alp[0])*(egyxi-X@(X.T.conj()@egyxi))
+        grad_part += (1-alp[1]/alp[0])*X@(egrad.T.conj()@xiproj)
         return self.proj_g_inv(X, ehess-grad_part)
 
     def retr(self, X, eta):
-        """ Calculate 'thin' qr decomposition of X + G
-        then add point X
-        then do thin lq decomposition
+        """ svd
         """
         u, _, vh = la.svd(X+eta, full_matrices=False)
         return u @ vh
@@ -181,21 +179,21 @@ class RealStiefel(NullRangeManifold):
     def rand(self):
         # Generate random  point using qr of random normally distributed
         # matrix.
-        O, _ = la.qr(randn(
+        O, _ = la.qr(crandn(
             self.n, self.d))
         return O
     
     def randvec(self, X):
-        U = self.proj(X, randn(*X.shape))
+        U = self.proj(X, crandn(*X.shape))
         U = U / self.norm(X, U)
         return U
 
     def _rand_ambient(self):
-        return randn(self.n, self.d)
+        return crandn(self.n, self.d)
 
     def _rand_range_J(self):
-        u = randn(self.d, self.d)
-        return u + u.T
+        u = crandn(self.d, self.d)
+        return u + u.T.conj()
 
     def _vec(self, E):
         return E.reshape(-1)
@@ -204,25 +202,25 @@ class RealStiefel(NullRangeManifold):
         return vec.reshape(self.n, self.d)
 
     def _vec_range_J(self, a):
-        return vech(a)
+        return cvech(a)
 
     def _unvec_range_J(self, vec):
-        return unvech(vec)
+        return cunvech(vec)
 
     def exp(self, Y, eta):
         # geodesic
-        K = eta - Y @ (Y.T @ eta)
+        K = eta - Y @ (Y.T.conj() @ eta)
         Yp, R = la.qr(K)
         alf = self.alpha[1]/self.alpha[0]
-        A = Y.T @eta
-        x_mat = bmat([[2*alf*A, -R.T],
-                      [R, zeros((self.d, self.d))]])
+        A = Y.T.conj() @eta
+        x_mat = bmat([[2*alf*A, -R.T.conj()],
+                      [R, zeros((self.d, self.d), dtype=np.complex)]])
         return bmat([Y, Yp]) @ expm(x_mat)[:, :self.d] @ \
             expm((1-2*alf)*A)
 
     def exp_alt(self, Y, eta):
         alf = self.alpha[1]/self.alpha[0]
-        A = Y.T @ eta
-        e_mat = bmat([[(2*alf-1)*A, -eta.T@eta - 2*(1-alf)*A@A],
+        A = Y.T.conj() @ eta
+        e_mat = bmat([[(2*alf-1)*A, -eta.T.conj()@eta - 2*(1-alf)*A@A],
                       [np.eye(self.d), A]])
         return (bmat([Y, eta]) @ expm(e_mat))[:, :self.d] @ expm((1-2*alf)*A)

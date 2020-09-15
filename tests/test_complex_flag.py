@@ -84,7 +84,7 @@ def make_j_mat(man, Y):
     codim = man.codim
     ret = zeros((codim, 2*np.prod(Y.shape)))
     for ii in range(ret.shape[1]):
-        ee = zeros(ret.shape[1])
+        ee = zeros(ret.shape[1], dtype=np.complex)
         ee[ii] = 1
         ret[:, ii] = man._vec_range_J(
             man.J(Y, man._unvec(ee)))
@@ -693,5 +693,107 @@ def optim_test():
         opt = solver.solve(prob, x=XInit, Delta_bar=250)
 
 
+def st(mat):
+    return mat.T.conjugate()
+        
+        
+def optim_test3():
+    from pymanopt import Problem
+    from pymanopt.solvers import TrustRegions
+    from pymanopt.function import Callable
+    n = 1000
+
+    # problem Tr(AXBX^T)
+    for i in range(1):
+        # Stiefel manifold
+        dvec = np.array([0, 50])
+        dvec[0] = n - dvec[1:].sum()
+        d = dvec[1:].sum()
+        p = dvec.shape[0]-1
+        
+        alpha = randint(1, 10, (p, p+1)) * .1
+        alpha0 = randint(1, 10, (p))
+        # alpha0 = randint(1, 2, (p))
+        alpha = make_simple_alpha(alpha0, 0)
+        
+        B = np.diag(
+            np.concatenate([randint(1, 10, d), np.zeros(n-d)]))
+        D = randint(1, 10, n) * 0.02 + 1
+        OO = random_orthogonal(n)
+        A = OO @ np.diag(D) @ OO.T
+        man = ComplexFlag(dvec, alpha)
+        cf = 10
+        B2 = B @ B
+
+        @Callable
+        def cost(X):
+            return cf * trace(
+                B @ X @ st(X) @ B2 @ X @ st(X) @ B) +\
+                trace(st(X) @ A @ X)
+        
+        @Callable
+        def egrad(X):
+            R = cf*4*B2 @ X @ st(X) @ B2 @ X + 2*A @ X
+            return R
+
+        @Callable
+        def ehess(X, H):
+            return 4*cf*B2 @ H @ st(X) @ B2 @ X +\
+                4*cf*B2 @ X @ st(H) @ B2 @ X +\
+                4*cf*B2 @ X @ st(X) @ B2 @ H + 2*A @ H
+        
+        if False:
+            X = man.rand()
+            xi = man.randvec(X)
+            d1 = num_deriv(man, X, xi, cost)
+            d2 = trace(egrad(X) @ st(xi)).real
+            print(check_zero(d1-d2))
+            d3 = num_deriv(man, X, xi, egrad)
+            d4 = ehess(X, xi)
+            print(check_zero(d3-d4))
+            
+        XInit = man.rand()
+        prob = Problem(
+            man, cost, egrad=egrad, ehess=ehess)
+
+        solver = TrustRegions(maxtime=100000, maxiter=100)
+        opt = solver.solve(prob, x=XInit, Delta_bar=2500)
+        print(cost(opt))
+        if False:
+            # print(opt)
+            # double check:
+            # print(cost(opt))
+            min_val = 1e190
+            # min_X = None
+            for i in range(100):
+                Xi = man.rand()
+                c = cost(Xi)
+                if c < min_val:
+                    # min_X = Xi
+                    min_val = c
+                if i % 1000 == 0:
+                    print('i=%d min=%f' % (i, min_val))
+            print(min_val)
+        alpha0 = randint(1, 2, (p))
+        alpha1 = make_simple_alpha(alpha0, 0)
+
+        man1 = ComplexFlag(dvec, alpha=alpha1)
+        prob = Problem(
+            man1, cost, egrad=egrad, ehess=ehess)
+
+        solver = TrustRegions(maxtime=100000, maxiter=100)
+        opt = solver.solve(prob, x=XInit, Delta_bar=250)
+        
+        alpha0 = randint(1, 2, (p))
+        alpha2 = make_simple_alpha(alpha0, -1)
+        man1 = ComplexFlag(dvec, alpha=alpha2)
+        # man1 = RealStiefel(n, d, alpha=np.array([1, 1]))
+        prob = Problem(
+            man1, cost, egrad=egrad, ehess=ehess)
+
+        solver = TrustRegions(maxtime=100000, maxiter=100)
+        opt = solver.solve(prob, x=XInit, Delta_bar=250)
+
+        
 if __name__ == '__main__':
     optim_test()

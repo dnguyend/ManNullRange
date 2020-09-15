@@ -5,7 +5,7 @@ import numpy.linalg as la
 from scipy.linalg import null_space
 from numpy import trace, zeros, allclose
 from numpy.random import randn
-from .tools import sym, asym, vecah, unvecah
+from .tools import sym, asym, vecah, unvecah, extended_lyapunov
 
 
 if not hasattr(__builtins__, "xrange"):
@@ -32,24 +32,19 @@ def _calc_dim(n, p):
     return dm, cdm_P, cdm_YP, tdim_St, tdim_P
 
 
-def _extended_lyapunov(alpha1, beta, P, B, Peig=None, Pevec=None):
-    """ solve the Lyapunov-type equation:
-    (alpha-2beta)X + \beta(PXP^{-1} + P^{-1}XP = B
-    Peig and Pevec are precomputed eigenvalue decomposition of P
-    """
-
-    if Peig is None:
-        Peig, Pevec = la.eigh(P)
-    evli = 1/Peig
-    return Pevec @ ((Pevec.T@B@Pevec) / (beta*(Peig[:, None] * evli[None, :] +
-                                         evli[:, None] * Peig[None, :]) +
-                                         alpha1-2*beta)) @ Pevec.T
-
-
 class psd_point(object):
     """a psd_point consists of
     pair of Y and P
     such that S = YPY.T
+
+    Parameters
+    ----------
+    Y, P   : matrices
+    
+    Results
+    ----------
+    A psd_point representing the matrix YPY.T
+
     """
     def __init__(self, Y, P):
         self._Y = Y
@@ -81,6 +76,17 @@ class psd_point(object):
     
 
 class psd_ambient(object):
+    """ Representing an ambient vector.
+    Has 2 components corresponding to Y, P
+    Cache for the D matrix which is expensive
+    to compute.
+
+    Parameters
+    ----------
+    tY, tP: the components
+
+    """
+    
     def __init__(self, tY, tP):
         self.tY = tY
         self.tP = tP
@@ -121,13 +127,32 @@ class psd_ambient(object):
     
 
 class RealPositiveSemidefinite(NullRangeManifold):
+    """Class for a Real Positive Semidefinite manifold
+    A manifold point is a triple (Y, P) with
+       Y.T@Y = I
+       P.T = P, P >> 0
+
+    Y of dimension n*p
+    P of dimension p*p
+    Metric is defined by two sets of parameters alpha, beta
+
+    Parameters
+    ----------
+    n, p     : # of rows of Y and P respectively
+    alpha    : array of size 2 defining a metric on the Stiefel manifold.
+               alpha  > 0
+    beta     : positive number. Metric scale on P
+    """
+    
     def __init__(self, n, p, alpha=None, beta=1):
         self._point_layout = 1
+        self._name = "Real Positive Semidefinite manifold n=%d p=%d" % (
+            self.n, self.p)
         self.n = n
         self.p = p
         # dm_St, dm_P, cdm_St, cdm_P, tdim_St, tdim_P
         dm, cdm_P, cdm_YP, tdim_St, tdim_P = _calc_dim(n, p)
-        self._dim = dm
+        self._dimension = dm
         self._codim = cdm_YP + cdm_P
         self._codim_YP = cdm_YP
         self._codim_P = cdm_P
@@ -140,7 +165,10 @@ class RealPositiveSemidefinite(NullRangeManifold):
             self.alpha = alpha
         self.beta = beta
 
-    def inner_product_amb(self, S, Ba, Bb=None):
+    def inner(self, S, Ba, Bb=None):
+        """Inner product (Riemannian metric, as an inner product on
+        the tangent ambient
+        """
         alf = self.alpha
         Y = S.Y
         Pinv = S.Pinv
@@ -152,18 +180,18 @@ class RealPositiveSemidefinite(NullRangeManifold):
     
     @property
     def dim(self):
-        return self._dim
+        return self._dimension
     
     @property
     def codim(self):
         return self._codim
 
     def __str__(self):
-        return "Realization Bundle on flag manifold psi=(%s)" % self.psi
+        return self._name
 
     @property
     def typicaldist(self):
-        return np.sqrt(sum(self._dim))
+        return np.sqrt(sum(self._dimension))
 
     def dist(self, X, Y):
         """ Geodesic distance. Not implemented
@@ -250,13 +278,6 @@ class RealPositiveSemidefinite(NullRangeManifold):
             (alpha[1] - alpha[0])*(E.tY @ xi.tY.T + xi.tY @ E.tY.T) @ S.Y,
             -self.beta*(Piv@xi.tP@Piv@E.tP@Piv + Piv@E.tP@Piv@xi.tP@Piv))
     
-    def inner(self, X, G, H):
-        """ Inner product (Riemannian metric) on the tangent space.
-        The tangent space is given as a matrix of size mm_degree * m
-        """
-        # return inner_product_tangent
-        return self.inner_product_amb(X, G, H)
-
     def st(self, mat):
         """The split_transpose. transpose if real, hermitian transpose if complex
         """
@@ -301,7 +322,7 @@ class RealPositiveSemidefinite(NullRangeManifold):
     def _calc_D(self, S, U):
         YTU = S.Y.T@U.tY
         D0 = sym(U.tP + YTU@S.P - S.P@YTU)
-        D = _extended_lyapunov(
+        D = extended_lyapunov(
             self.alpha[1], self.beta, S.P, D0, S.evl, S.evec)
         return D
     
@@ -325,7 +346,7 @@ class RealPositiveSemidefinite(NullRangeManifold):
             self.beta * (xi.tP @ D @ S.Pinv + S.Pinv @ D @ xi.tP -
                          S.P @ D @ S.Pinv @ xi.tP @ S.Pinv -
                          S.Pinv @ xi.tP @ S.Pinv @ D @ S.P)
-        dd = _extended_lyapunov(al1, bt, S.P,  sym(ddin), S.evl, S.evec)
+        dd = extended_lyapunov(al1, bt, S.P,  sym(ddin), S.evl, S.evec)
         t2 = bt * xi.tY @ (S.Pinv @ D - D @ S.Pinv) +\
             bt * S.Y @ (S.Pinv @ dd - dd @ S.Pinv +
                         D @ S.Pinv @ xi.tP @ S.Pinv -
@@ -398,11 +419,6 @@ class RealPositiveSemidefinite(NullRangeManifold):
         """Random tangent vector at point X
         """
 
-        """
-        U = np.random.randn(self._dim)
-        U = U / self.norm(X, U)
-        return U
-        """
         U = self.proj(X, self._rand_ambient())
         nrm = self.norm(X, U)
         return psd_ambient(U.tY/nrm, U.tP/nrm)

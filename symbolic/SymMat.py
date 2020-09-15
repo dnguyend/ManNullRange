@@ -68,7 +68,8 @@ class t(Function):
     is_commutative = False
     
     def __new__(cls, arg):
-        if hasattr(arg, 'is_constant') and arg.is_constant():
+        # if hasattr(arg, 'is_constant') and arg.is_constant():
+        if hasattr(arg, 'is_number') and arg.is_number:
             return arg
         elif arg in g_scalars:
             return arg
