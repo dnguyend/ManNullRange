@@ -5,8 +5,7 @@ import numpy.linalg as la
 
 from ManNullRange.manifolds.RealPositiveSemidefinite import (
     RealPositiveSemidefinite, psd_ambient, psd_point)
-from ManNullRange.manifolds.RealPositiveSemidefinite import (
-    sym, _extended_lyapunov)
+from ManNullRange.manifolds.tools import (sym, extended_lyapunov)
 from test_tools import check_zero, make_sym_pos, random_orthogonal
 
 
@@ -145,7 +144,7 @@ def test_lyapunov():
     def L(X, P):
         Piv = la.inv(P)
         return (alpha1 - 2*beta)*X + beta*(P@X@Piv + Piv@X@P)
-    X = _extended_lyapunov(alpha1, beta, P, B)
+    X = extended_lyapunov(alpha1, beta, P, B)
     # L(X, P)
     print(check_zero(B-L(X, P)))
 
@@ -185,6 +184,7 @@ def test_all_projections():
     n = 5
     d = 3
     man = RealPositiveSemidefinite(n, d, alpha=alpha, beta=beta)
+    print(man)
     S = man.rand()
 
     test_inner(man, S)
@@ -376,40 +376,7 @@ def test_all_projections():
         v4 = man.base_inner_ambient(man.D_g(S1, xi, eta1), eta2)
         print(v1, 0.5*(v2+v3-v4), v1-0.5*(v2+v3-v4))
 
-    if False:
-        for i in range(10):
-            Y1 = man.rand()
-            xi = man.randvec(Y1)
-            eta = randn(*Y.shape)
-            aout1 = man._rand_range_J()
-            aout2 = 4/man.alpha[1]*aout1
-            aout3 = man.J(Y1, man.g_inv_Jst(Y1, aout1))
-            print(check_zero(aout2-aout3))
-            aout4 = man.alpha[1]/4*aout3
-            print(check_zero(aout4-aout1))
-
-        for i in range(10):
-            Y1 = man.rand()
-            xi = man.randvec(Y1)
-
-            p1 = g_inv_jt_jgjt_inv_D_J(man, Y1, xi, eta)
-            dj = D_J(man, Y1, xi, eta)
-            aout = man.alpha[1]/4*dj
-            # apply_J_inv_JT(man, dj, aout, solve=True)
-            p2 = ginvJst(man, Y1, aout)
-            print(check_zero(p1-p2))
-
-        for i in range(10):
-            Y1 = man.rand()
-            xi = man.randvec(Y1)
-            eta = randn(*Y.shape)
-            p1 = g_inv_jt_jgjt_inv_D_J(man, Y1, xi, eta)
-            dj = D_J(man, Y1, xi, eta)
-            aout = man.alpha[1]/4*dj
-            p2 = ginvJst(man, Y1, aout)
-            print(check_zero(p1-p2))    
         
-
 def test_christ_flat():
     """now test that christofel preserve metrics:
     on the flat space
@@ -820,5 +787,67 @@ def optim_test():
     print(np.max(np.abs(A0-opt_mat)))
 
 
+def test_geodesics():
+    from scipy.linalg import expm
+    alpha = np.random.randint(1, 10, (2)) * .1
+    beta = alpha[1] * .1
+    m, d = (5, 3)
+    man = RealPositiveSemidefinite(m, d, alpha=alpha, beta=beta)
+    X = man.rand()
+
+    alf = alpha[1]/alpha[0]
+    
+    def calc_gamma(man, X, xi, eta):
+        g_inv_Jst_solve_J_g_in_Jst_DJ = man.g_inv(
+            X, man.Jst(X, man.solve_J_g_inv_Jst(
+                X, man.D_J(X, xi, eta))))
+        proj_christoffel = man.proj_g_inv(
+            X, man.christoffel_form(X, xi, eta))
+        return g_inv_Jst_solve_J_g_in_Jst_DJ + proj_christoffel
+        
+    eta = man.randvec(X)
+    g1 = calc_gamma(man, X, eta, eta)
+
+    egrad = man._rand_ambient()
+    print(man.base_inner_ambient(g1, egrad))
+    print(man.rhess02_alt(X, eta, eta, egrad, 0))
+    print(man.rhess02(X, eta, eta, egrad, man.zerovec(X)))
+    # second solution:
+    A = X.Y.T @ eta.tY
+    t = 2
+    K = eta.tY - X.Y @ (X.Y.T @ eta.tY)
+    Yp, R = np.linalg.qr(K)
+
+    x_mat = np.bmat([[2*alf*A, -R.T], [R, zeros((d, d))]])
+    Yt = np.bmat([X.Y, Yp]) @ expm(t*x_mat)[:, :d] @ \
+        expm(t*(1-2*alf)*A)
+    x_d_mat = x_mat[:, :d].copy()
+    x_d_mat[:d, :] += (1-2*alf) * A
+    Ydt = np.bmat([X.Y, Yp]) @ expm(t*x_mat) @ x_d_mat @\
+        expm(t*(1-2*alf)*A)
+    x_dd_mat = x_mat @ x_d_mat + x_d_mat @ ((1-2*alf)*A)
+    Yddt = np.bmat([X.Y, Yp]) @ expm(t*x_mat) @ x_dd_mat @\
+        expm(t*(1-2*alf)*A)
+    
+    sqrtP = X.evec @ np.diag(np.sqrt(X.evl)) @ X.evec.T
+    isqrtP = X.evec @ np.diag(1/np.sqrt(X.evl)) @ X.evec.T
+    Pinn = t*isqrtP@eta.tP@isqrtP
+    ePinn = expm(Pinn)
+    Pt = sqrtP@ePinn@sqrtP
+    Pdt = eta.tP@isqrtP@ePinn@sqrtP
+    Pddt = eta.tP@isqrtP@ ePinn@isqrtP@eta.tP
+    
+    Xt = psd_point(np.array(Yt), np.array(Pt))
+    Xdt = psd_ambient(np.array(Ydt), np.array(Pdt))
+    Xddt = psd_ambient(np.array(Yddt), np.array(Pddt))
+    gcheck = Xddt + calc_gamma(man, Xt, Xdt, Xdt)
+    
+    print(man._vec(gcheck))
+    Xt1 = man.exp(X, t*eta)
+    print((Xt1.Y - Xt.Y))
+    print((Xt1.P - Xt.P))
+
+    
 if __name__ == '__main__':
     optim_test()
+    test_all_projections()

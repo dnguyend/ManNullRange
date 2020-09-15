@@ -222,7 +222,7 @@ class ComplexFixedRank(NullRangeManifold):
         """
         raise NotImplementedError
 
-    def base_inner_ambient(X, E1, E2):
+    def base_inner_ambient(self, E1, E2):
         return rtrace(E1.tP.T.conj() @ E2.tP) +\
             rtrace(E1.tU.T.conj() @ E2.tU) +\
             rtrace(E1.tV.T.conj() @ E2.tV)

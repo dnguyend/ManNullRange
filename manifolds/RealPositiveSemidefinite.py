@@ -2,7 +2,7 @@ from __future__ import division
 from .NullRangeManifold import NullRangeManifold
 import numpy as np
 import numpy.linalg as la
-from scipy.linalg import null_space
+from scipy.linalg import null_space, expm
 from numpy import trace, zeros, allclose
 from numpy.random import randn
 from .tools import sym, asym, vecah, unvecah, extended_lyapunov
@@ -146,8 +146,6 @@ class RealPositiveSemidefinite(NullRangeManifold):
     
     def __init__(self, n, p, alpha=None, beta=1):
         self._point_layout = 1
-        self._name = "Real Positive Semidefinite manifold n=%d p=%d" % (
-            self.n, self.p)
         self.n = n
         self.p = p
         # dm_St, dm_P, cdm_St, cdm_P, tdim_St, tdim_P
@@ -187,6 +185,9 @@ class RealPositiveSemidefinite(NullRangeManifold):
         return self._codim
 
     def __str__(self):
+        self._name = "Real Positive Semidefinite manifold n=%d p=%d %s %s" % (
+            self.n, self.p, str(self.alpha), (self.beta))
+
         return self._name
 
     @property
@@ -198,10 +199,10 @@ class RealPositiveSemidefinite(NullRangeManifold):
         """
         raise NotImplementedError
 
-    def base_inner_ambient(X, E1, E2):
+    def base_inner_ambient(self, E1, E2):
         return trace(E1.tP.T @ E2.tP) + trace(E1.tY.T @ E2.tY)
 
-    def base_inner_E_J(X, a1, a2):
+    def base_inner_E_J(self, a1, a2):
         return trace(a1['P'].T @ a2['P']) + trace(a1['YP'].T @ a2['YP'])
 
     def zerovec(self, S):
@@ -466,4 +467,23 @@ class RealPositiveSemidefinite(NullRangeManifold):
         a['P'] = unvecah(vec[:self._codim_P])
         a['YP'] = vec[:self.codim_P].reshape(self.n, self.d)
         return a
-    
+
+    def exp(self, X, eta):
+        # geodesic
+        K = eta.tY - X.Y @ (X.Y.T @ eta.tY)
+        Yp, R = la.qr(K)
+        alf = self.alpha[1]/self.alpha[0]
+        A = X.Y.T @eta.tY
+        x_mat = np.bmat([[2*alf*A, -R.T],
+                         [R, zeros((self.p, self.p))]])
+        Yt = np.array(np.bmat([X.Y, Yp]) @ expm(x_mat)[:, :self.p] @
+                      expm((1-2*alf)*A))
+
+        sqrtP = X.evec @ np.diag(np.sqrt(X.evl)) @ X.evec.T
+        isqrtP = X.evec @ np.diag(1/np.sqrt(X.evl)) @ X.evec.T
+        Pinn = isqrtP @ eta.tP @ isqrtP
+        ePinn = expm(Pinn)
+        Pt = np.array(sqrtP @ ePinn@sqrtP)
+        return psd_point(Yt, Pt)
+
+

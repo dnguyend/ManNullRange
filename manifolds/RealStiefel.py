@@ -37,8 +37,8 @@ class RealStiefel(NullRangeManifold):
         self._point_layout = 1
         self.n = n
         self.d = d
-        self._name = "Real_stiefel manifold n=%d d=%d alpha=str(alpha)" % (
-            self.n, self.d, str(self.alpha))
+        self._name = "Real_stiefel manifold n=%d d=%d alpha=%s" % (
+            self.n, self.d, str(alpha))
         self._dimension, self._codim, _ = _calc_dim(n, d)
         if alpha is None:
             self.alpha = np.array([1, .5])
@@ -58,10 +58,10 @@ class RealStiefel(NullRangeManifold):
     def __str__(self):
         return self._name
 
-    def base_inner_ambient(X, eta1, eta2):
+    def base_inner_ambient(self, eta1, eta2):
         return trace(eta1.T @ eta2)
 
-    def base_inner_E_J(X, a1, a2):
+    def base_inner_E_J(self, a1, a2):
         return trace(a1 @ a2.T)
     
     def g(self, X, eta):
@@ -225,4 +225,5 @@ class RealStiefel(NullRangeManifold):
         A = Y.T @ eta
         e_mat = bmat([[(2*alf-1)*A, -eta.T@eta - 2*(1-alf)*A@A],
                       [np.eye(self.d), A]])
-        return (bmat([Y, eta]) @ expm(e_mat))[:, :self.d] @ expm((1-2*alf)*A)
+        return np.array(
+            (bmat([Y, eta]) @ expm(e_mat))[:, :self.d] @ expm((1-2*alf)*A))

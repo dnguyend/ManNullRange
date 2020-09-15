@@ -219,7 +219,7 @@ class RealFixedRank(NullRangeManifold):
         """
         raise NotImplementedError
 
-    def base_inner_ambient(X, E1, E2):
+    def base_inner_ambient(self, E1, E2):
         return trace(E1.tP.T @ E2.tP) + trace(E1.tU.T @ E2.tU) +\
             trace(E1.tV.T @ E2.tV)
 

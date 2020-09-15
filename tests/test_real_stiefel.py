@@ -321,8 +321,8 @@ def calc_covar_numeric(man, Y, xi, v_func):
     Wnew = Y + dlt * xi
     vnew = vv_func(Wnew)
 
-    val = man.inner_product_amb(Y, vv)
-    valnew = man.inner_product_amb(
+    val = man.inner(Y, vv)
+    valnew = man.inner(
         Wnew, vnew)
     d1 = (valnew - val)/dlt
     dv = (vnew - vv) / dlt
@@ -330,8 +330,8 @@ def calc_covar_numeric(man, Y, xi, v_func):
     nabla_xi_v_up = dv + man.g_inv(Y, cx)
     nabla_xi_v = man.proj(Y, nabla_xi_v_up)
     if False:
-        d2 = man.inner_product_amb(Y, vv, nabla_xi_v)
-        d2up = man.inner_product_amb(
+        d2 = man.inner(Y, vv, nabla_xi_v)
+        d2up = man.inner(
             Y, vv, nabla_xi_v_up)
 
         print(d1)
@@ -805,6 +805,76 @@ def optim_test3():
         solver = TrustRegions(maxtime=100000, maxiter=100)
         opt = solver.solve(prob, x=XInit, Delta_bar=250)
 
+
+def test_geodesics():
+    from scipy.linalg import expm
+    alpha = np.random.randint(1, 10, (2)) * .1
+    # alpha = np.array([1, .5])
+    m, d = (5, 3)
+    man = RealStiefel(m, d, alpha=alpha)
+    Y = man.rand()
+
+    alf = alpha[1]/alpha[0]
+    
+    def calc_gamma(man, Y, eta):
+        etaxiy = 2*eta @ (eta.T@Y)
+        egcoef = Y @ (eta.T@eta)
+        ft = 1 - alf
+        egcoef += ft*(etaxiy - Y@(Y.T@etaxiy))
+        return egcoef
+    eta = man.randvec(Y)
+    g1 = calc_gamma(man, Y, eta)
+
+    egrad = randn(m, d)
+    print(trace(g1 @ egrad.T))
+    print(man.rhess02_alt(Y, eta, eta, egrad, 0))
+
+    # try to see if the solution is good:
+    A = Y.T @ eta
+    S0 = eta.T @ eta
+
+    e_mat = np.bmat([[(2*alf-1)*A, -S0 - 2*(1-alf)*A@A],
+                     [np.eye(d), A]])
+    init_c = np.bmat([Y, eta])
+    
+    def ff(t):
+        v1 = init_c @ expm(t*e_mat)
+        v2 = expm(t*(1-2*alf)*A)
+        return v1[:, :d] @ v2, v1[:, d:] @ v2, None
+
+    t = 100
+    dlt = 1e-8
+
+    fval, fd, fdd = ff(t)
+    fval1, fd1, fdd1 = ff(t+dlt)
+    fval2, fd2, fdd2 = ff(t-dlt)
+    ffdot = (fval1 - fval)/dlt
+    print(check_zero(ffdot - fd))
+    ffddot_0 = (fval1 - 2*fval + fval2)/(dlt*dlt)
+    ffddot = (fd1 - fd)/dlt
+    print(ffddot_0)
+    print(ffddot)
+    print(ffddot + calc_gamma(man, fval, ffdot))
+
+    # second solution:
+    K = eta - Y @ (Y.T @ eta)
+    Yp, R = np.linalg.qr(K)
+
+    x_mat = np.bmat([[2*alf*A, -R.T], [R, zeros((d, d))]])
+    Yt = np.bmat([Y, Yp]) @ expm(t*x_mat)[:, :d] @ \
+        expm(t*(1-2*alf)*A)
+    x_d_mat = x_mat[:, :d].copy()
+    x_d_mat[:d, :] += (1-2*alf) * A
+    Ydt = np.bmat([Y, Yp]) @ expm(t*x_mat) @ x_d_mat @\
+        expm(t*(1-2*alf)*A)
+    x_dd_mat = x_mat @ x_d_mat + x_d_mat @ ((1-2*alf)*A)
+    Yddt = np.bmat([Y, Yp]) @ expm(t*x_mat) @ x_dd_mat @\
+        expm(t*(1-2*alf)*A)
+    print(Yddt + calc_gamma(man, Yt, Ydt))
+    print(man.exp(Y, t*eta)-Yt)
+        
         
 if __name__ == '__main__':
     optim_test()
+    test_geodesics()
+    test_all_projections()

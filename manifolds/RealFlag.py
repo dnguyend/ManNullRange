@@ -43,9 +43,8 @@ class RealFlag(NullRangeManifold):
         self.dvec = np.array(dvec)
         self.n = dvec.sum()
         self.d = dvec[1:].sum()
-        self._name = "Real flag manifold dimension vector=(%s)" % self.dvec
         self._dimension = _calc_dim(dvec)
-        self._codim = self.d * self.n - self._dim
+        self._codim = self.d * self.n - self._dimension
         self._point_layout = 1
         cs = dvec[:].cumsum() - dvec[0]
         self._g_idx = dict((i+1, (cs[i], cs[i+1]))
@@ -91,6 +90,8 @@ class RealFlag(NullRangeManifold):
         return self._codim
 
     def __str__(self):
+        self._name = "Real flag manifold dimension vector=(%s) alpha=%s" % (
+            self.dvec, str(self.alpha))
         return self._name
 
     @property
@@ -102,10 +103,10 @@ class RealFlag(NullRangeManifold):
         """
         raise NotImplementedError
 
-    def base_inner_ambient(X, eta1, eta2):
+    def base_inner_ambient(self, eta1, eta2):
         return trace(eta1.T @ eta2)
 
-    def base_inner_E_J(X, a1, a2):
+    def base_inner_E_J(self, a1, a2):
         raise trace(a1.T @ a2)
     
     def g(self, X, omg):

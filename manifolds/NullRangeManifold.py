@@ -37,10 +37,10 @@ class NullRangeManifold(Manifold):
         """
         raise NotImplementedError
 
-    def base_inner_ambient(X, eta1, eta2):
+    def base_inner_ambient(self, eta1, eta2):
         raise NotImplementedError
 
-    def base_inner_E_J(X, a1, a2):
+    def base_inner_E_J(self, a1, a2):
         raise NotImplementedError
     
     def g(self, X, eta):
@@ -134,13 +134,13 @@ class NullRangeManifold(Manifold):
         """ optional
         """
         try:
-            g_inv_solve_J_g_in_Jst_DJ = self.g_inv(
-                X, self.solve_J_g_inv_Jst(
-                    X, self.D_J(X, xi, eta)))
+            g_inv_Jst_solve_J_g_in_Jst_DJ = self.g_inv(
+                X, self.Jst(X, self.solve_J_g_inv_Jst(
+                    X, self.D_J(X, xi, eta))))
             proj_christoffel = self.proj_g_inv(
-                self.christofel_form(X, xi, eta))
+                X, self.christoffel_form(X, xi, eta))
             return ehess_val - self.base_inner_ambient(
-                (g_inv_solve_J_g_in_Jst_DJ + proj_christoffel, egrad))
+                g_inv_Jst_solve_J_g_in_Jst_DJ + proj_christoffel, egrad)
         except Exception as e:
             raise(RuntimeError("%s if D_J is not implemeted try rhess02" % e))
     

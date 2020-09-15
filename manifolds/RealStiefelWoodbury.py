@@ -52,10 +52,10 @@ class RealStiefelWoodbury(NullRangeManifold):
     def zerovec(self, X):
         return zeros_like(X)
 
-    def base_inner_ambient(X, eta1, eta2):
+    def base_inner_ambient(self, eta1, eta2):
         return trace(eta1.T @ eta2)
 
-    def base_inner_E_J(X, a1, a2):
+    def base_inner_E_J(self, a1, a2):
         return trace(a1 @ a2.T)
     
     def g(self, X, eta):

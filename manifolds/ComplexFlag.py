@@ -1,5 +1,5 @@
 from __future__ import division
-from ManNullRange import NullRangeManifold
+from .NullRangeManifold import NullRangeManifold
 import numpy as np
 import numpy.linalg as la
 from numpy import zeros, zeros_like
@@ -46,7 +46,6 @@ class ComplexFlag(NullRangeManifold):
         self.dvec = np.array(dvec)
         self.n = dvec.sum()
         self.d = dvec[1:].sum()
-        self._name = "Complex flag manifold dvec=(%s)" % self.dvec
         self._dimension = _calc_dim(dvec)
         self._codim = 2*self.d * self.n - self._dimension
         cs = dvec[:].cumsum() - dvec[0]
@@ -94,6 +93,8 @@ class ComplexFlag(NullRangeManifold):
         return self._codim
 
     def __str__(self):
+        self._name = "Complex flag manifold dvec=(%s) alpha=%s" % (
+            self.dvec, str(self.alpha))
         return self._name
 
     @property
@@ -105,10 +106,10 @@ class ComplexFlag(NullRangeManifold):
         """
         raise NotImplementedError
 
-    def base_inner_ambient(X, eta1, eta2):
+    def base_inner_ambient(self, eta1, eta2):
         return rtrace(eta1.T.conj() @ eta2)
 
-    def base_inner_E_J(X, a1, a2):
+    def base_inner_E_J(self, a1, a2):
         raise rtrace(a1.T.conj() @ a2)
     
     def g(self, X, omg):

@@ -200,11 +200,11 @@ class ComplexPositiveSemidefinite(NullRangeManifold):
         """
         raise NotImplementedError
 
-    def base_inner_ambient(X, E1, E2):
+    def base_inner_ambient(self, E1, E2):
         return rtrace(E1.tP.T.conj() @ E2.tP) +\
             rtrace(E1.tY.T.conj() @ E2.tY)
 
-    def base_inner_E_J(X, a1, a2):
+    def base_inner_E_J(self, a1, a2):
         return rtrace(a1['P'].T.conj() @ a2['P']) +\
             rtrace(a1['YP'].T.conj() @ a2['YP'])
 

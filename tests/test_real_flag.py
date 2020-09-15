@@ -142,6 +142,7 @@ def test_all_projections():
     p = dvec.shape[0]-1
     alpha = randint(1, 10, (p, p+1)) * .1
     man = RealFlag(dvec, alpha=alpha)
+    print(man)
     Y = man.rand()
     U = man._rand_ambient()
     Upr = man.proj(Y, U)

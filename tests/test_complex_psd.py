@@ -4,9 +4,8 @@ from numpy import zeros, trace, allclose
 import numpy.linalg as la
 
 from ManNullRange.manifolds.ComplexPositiveSemidefinite import (
-    ComplexPositiveSemidefinite, psd_ambient, psd_point,
-    _extended_lyapunov)
-from ManNullRange.manifolds.tools import crandn, hsym
+    ComplexPositiveSemidefinite, psd_ambient, psd_point)
+from ManNullRange.manifolds.tools import crandn, hsym, extended_lyapunov
 from test_tools import check_zero
 
 
@@ -177,7 +176,7 @@ def test_lyapunov():
     def L(X, P):
         Piv = la.inv(P)
         return (alpha1 - 2*beta)*X + beta*(P@X@Piv + Piv@X@P)
-    X = _extended_lyapunov(alpha1, beta, P, B)
+    X = extended_lyapunov(alpha1, beta, P, B)
     # L(X, P)
     print(check_zero(B-L(X, P)))
 
@@ -217,6 +216,7 @@ def test_all_projections():
     n = 5
     d = 3
     man = ComplexPositiveSemidefinite(n, d, alpha=alpha, beta=beta)
+    print(man)
     S = man.rand()
 
     test_inner(man, S)
@@ -837,3 +837,5 @@ def optim_test():
 
 if __name__ == '__main__':
     optim_test()
+    test_lyapunov()
+    test_all_projections()

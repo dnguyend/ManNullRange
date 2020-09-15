@@ -4,7 +4,7 @@ import numpy.linalg as la
 import numpy as np
 from numpy import zeros_like, bmat, zeros
 from scipy.linalg import expm
-from .tools import cvech, cunvech, crandn, rtrace
+from .tools import cvech, cunvech, crandn, rtrace, cvec, cunvec
 
 
 if not hasattr(__builtins__, "xrange"):
@@ -12,9 +12,9 @@ if not hasattr(__builtins__, "xrange"):
 
 
 def _calc_dim(n, d):
-    dm = d * (n-d) + d*(d-1)//2
-    cdm = d*(d+1) // 2
-    tdim = n*d
+    dm = 2*d * (n-d) + d*d
+    cdm = d*d
+    tdim = 2*n*d
     return dm, cdm, tdim
 
     
@@ -36,8 +36,6 @@ class ComplexStiefel(NullRangeManifold):
         self._point_layout = 1
         self.n = n
         self.d = d
-        self._name = "Real_stiefel manifold n=%d d=%d alpha=str(alpha)" % (
-            self.n, self.d, str(self.alpha))
         self._dimension, self._codim, _ = _calc_dim(n, d)
         if alpha is None:
             self.alpha = np.array([1, .5])
@@ -55,12 +53,15 @@ class ComplexStiefel(NullRangeManifold):
             rtrace((eta1.T.conj() @ X) @ (X.T.conj() @ eta2))
     
     def __str__(self):
+        self._name = "Complex stiefel manifold n=%d d=%d alpha=%s" % (
+            self.n, self.d, str(self.alpha))
+
         return self._name
 
-    def base_inner_ambient(X, eta1, eta2):
+    def base_inner_ambient(self, eta1, eta2):
         return rtrace(eta1.T.conj() @ eta2)
 
-    def base_inner_E_J(X, a1, a2):
+    def base_inner_E_J(self, a1, a2):
         return rtrace(a1 @ a2.T.conj())
     
     def g(self, X, eta):
@@ -196,10 +197,10 @@ class ComplexStiefel(NullRangeManifold):
         return u + u.T.conj()
 
     def _vec(self, E):
-        return E.reshape(-1)
+        return cvec(E)
 
     def _unvec(self, vec):
-        return vec.reshape(self.n, self.d)
+        return cunvec(vec, (self.n, self.d))
 
     def _vec_range_J(self, a):
         return cvech(a)
