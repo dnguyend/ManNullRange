@@ -209,7 +209,19 @@ class ComplexStiefel(NullRangeManifold):
         return cunvech(vec)
 
     def exp(self, Y, eta):
-        # geodesic
+        """Geodesic from Y in direction eta
+
+        Parameters
+        ----------
+        Y    : a manifold point
+        eta  : tangent vector
+        
+        Returns
+        ----------
+        gamma(1), where gamma(t) is the geodesics at Y in direction eta
+
+        """
+
         K = eta - Y @ (Y.T.conj() @ eta)
         Yp, R = la.qr(K)
         alf = self.alpha[1]/self.alpha[0]
@@ -220,6 +232,8 @@ class ComplexStiefel(NullRangeManifold):
             expm((1-2*alf)*A)
 
     def exp_alt(self, Y, eta):
+        """ Alternative geodesics formula
+        """
         alf = self.alpha[1]/self.alpha[0]
         A = Y.T.conj() @ eta
         e_mat = bmat([[(2*alf-1)*A, -eta.T.conj()@eta - 2*(1-alf)*A@A],

@@ -2,7 +2,7 @@ from __future__ import division
 from .NullRangeManifold import NullRangeManifold
 import numpy as np
 import numpy.linalg as la
-from scipy.linalg import null_space
+from scipy.linalg import null_space, expm
 from numpy import zeros, allclose
 from .tools import (
     hsym, ahsym, cvecah, cunvecah, cvec, cunvec, crandn,
@@ -480,3 +480,31 @@ class ComplexPositiveSemidefinite(NullRangeManifold):
         a['YP'] = cunvec(vec[:self.codim_P], (self.n, self.d))
         return a
     
+    def exp(self, X, eta):
+        """Geodesic from X in direction eta
+
+        Parameters
+        ----------
+        X    : a manifold point
+        eta  : tangent vector
+        
+        Returns
+        ----------
+        gamma(1), where gamma(t) is the geodesics at X in direction eta
+
+        """
+        K = eta.tY - X.Y @ (X.Y.T.conj() @ eta.tY)
+        Yp, R = la.qr(K)
+        alf = self.alpha[1]/self.alpha[0]
+        A = X.Y.T.conj() @eta.tY
+        x_mat = np.bmat([[2*alf*A, -R.T.conj()],
+                         [R, zeros((self.p, self.p))]])
+        Yt = np.array(np.bmat([X.Y, Yp]) @ expm(x_mat)[:, :self.p] @
+                      expm((1-2*alf)*A))
+
+        sqrtP = X.evec @ np.diag(np.sqrt(X.evl)) @ X.evec.T.conj()
+        isqrtP = X.evec @ np.diag(1/np.sqrt(X.evl)) @ X.evec.T.conj()
+        Pinn = isqrtP @ eta.tP @ isqrtP
+        ePinn = expm(Pinn)
+        Pt = np.array(sqrtP @ ePinn@sqrtP)
+        return psd_point(Yt, Pt)

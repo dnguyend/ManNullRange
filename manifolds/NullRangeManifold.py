@@ -143,6 +143,17 @@ class NullRangeManifold(Manifold):
                 g_inv_Jst_solve_J_g_in_Jst_DJ + proj_christoffel, egrad)
         except Exception as e:
             raise(RuntimeError("%s if D_J is not implemeted try rhess02" % e))
+
+    def christoffel_gamma(self, X, xi, eta):
+        try:
+            g_inv_Jst_solve_J_g_in_Jst_DJ = self.g_inv(
+                X, self.Jst(X, self.solve_J_g_inv_Jst(
+                    X, self.D_J(X, xi, eta))))
+            proj_christoffel = self.proj_g_inv(
+                X, self.christoffel_form(X, xi, eta))
+            return g_inv_Jst_solve_J_g_in_Jst_DJ + proj_christoffel
+        except Exception as e:
+            raise(RuntimeError("%s if D_J is not implemeted try rhess02" % e))
     
     def ehess2rhess(self, X, egrad, ehess, H):
         """ Convert Euclidean into Riemannian Hessian.

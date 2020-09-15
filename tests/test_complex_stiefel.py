@@ -1,9 +1,10 @@
 import numpy as np
-from numpy.random import (randint, randn)
-from numpy import zeros, zeros_like, trace, allclose
+from numpy.random import (randint)
+from numpy import zeros, zeros_like, allclose
 
-from ManNullRange.manifolds.RealStiefel import RealStiefel
+from ManNullRange.manifolds.ComplexStiefel import ComplexStiefel
 from test_tools import check_zero, make_sym_pos, random_orthogonal
+from ManNullRange.manifolds.tools import rtrace, crandn
 
 
 def test_inner(man, Y):
@@ -11,24 +12,24 @@ def test_inner(man, Y):
         alpha = man.alpha
         eta1 = man._rand_ambient()
         eta2 = man._rand_ambient()
-        inn1 = alpha[0]*trace(eta1.T @ eta2) +\
-            (alpha[1]-alpha[0])*trace((eta1.T@Y) @ (Y.T@eta2))
+        inn1 = alpha[0]*rtrace(eta1.T.conj() @ eta2) +\
+            (alpha[1]-alpha[0])*rtrace((eta1.T.conj()@Y) @ (Y.T.conj()@eta2))
         assert(allclose(man.inner(Y, eta1, eta2), inn1))
         
         eta2a = man.g_inv(Y, eta2)
         v1 = man.inner(Y, eta1, eta2a)
-        v2 = trace(eta1 @ eta2.T)
+        v2 = rtrace(eta1 @ eta2.T.conj())
         assert(allclose(v1, v2))
     print(True)
 
 
 def test_J(man, Y):
     def diff_i_j(i, j):
-        U = zeros_like(Y)
+        U = zeros_like(Y, dtype=np.complex)
         U[ii, jj] = 1
-        return np.mean(np.abs(man.J(Y, U) - (Y.T @ U + U.T @Y)))
+        return np.mean(np.abs(man.J(Y, U) - (Y.T.conj() @ U + U.T.conj() @Y)))
 
-    diffs = zeros_like(Y)
+    diffs = zeros_like(Y, dtype=np.complex)
     for ii in range(Y.shape[0]):
         for jj in range(Y.shape[1]):
             diffs[ii, jj] = diff_i_j(ii, jj)
@@ -44,7 +45,7 @@ def test_Jst(man, Y, jmat):
     for ii in range(10):
         a = man._rand_range_J()
         avec = man._vec_range_J(a)
-        jtout = man._unvec(jmat.T @ avec)
+        jtout = man._unvec(jmat.T.conj() @ avec)
         jtout2 = man.Jst(Y, a)
         # print(np.where(np.abs(jtout - jtout2) > 1e-9))
         diff = check_zero(jtout-jtout2)
@@ -53,7 +54,7 @@ def test_Jst(man, Y, jmat):
 
 def misc_test_cg(Y, b):
     from scipy.sparse.linalg import LinearOperator, cg
-    Amat = np.eye(Y.shape[0]) - .5*Y @ Y.T
+    Amat = np.eye(Y.shape[0]) - .5*Y @ Y.T.conj()
     
     def Afunc(x):
         return (Amat @ x.reshape(Y.shape)).reshape(-1)
@@ -64,9 +65,9 @@ def misc_test_cg(Y, b):
 
 def make_j_mat(man, Y):
     codim = man.codim
-    ret = zeros((codim, np.prod(Y.shape)))
+    ret = zeros((codim, 2*np.prod(Y.shape)))
     for ii in range(ret.shape[1]):
-        ee = zeros(ret.shape[1])
+        ee = zeros(ret.shape[1], dtype=np.complex)
         ee[ii] = 1
         ret[:, ii] = man._vec_range_J(
             man.J(Y, man._unvec(ee)))
@@ -74,12 +75,12 @@ def make_j_mat(man, Y):
 
 
 def make_g_inv_mat(man, Y):
-    nn = np.prod(Y.shape)
+    nn = 2*np.prod(Y.shape)
     ret = zeros((nn, nn))
     for ii in range(ret.shape[1]):
         ee = zeros(ret.shape[1])
         ee[ii] = 1
-        ret[:, ii] = man.g_inv(Y, ee.reshape(Y.shape)).reshape(-1)
+        ret[:, ii] = man._vec(man.g_inv(Y, man._unvec(ee)))
     return ret
     
 
@@ -106,7 +107,7 @@ def test_projection(man, Y):
         U = man._rand_ambient()
         Upr = man.proj(XX, U)
         ret_pr[i] = man.inner(XX, U, H) - man.inner(XX, Upr, H)
-        ret[i] = (check_zero(XX.T @ H + H.T @ XX))
+        ret[i] = (check_zero(XX.T.conj() @ H + H.T.conj() @ XX))
     print(ret)
     if check_zero(ret) > 1e-9:
         print("not all works")
@@ -124,14 +125,14 @@ def test_all_projections():
     alpha = randint(1, 10, 2) * .1
     n = 5
     d = 3
-    man = RealStiefel(n, d, alpha=alpha)
+    man = ComplexStiefel(n, d, alpha=alpha)
     Y = man.rand()
 
     test_inner(man, Y)
     test_J(man, Y)
             
     # now check metric, Jst etc
-    # check Jst: vectorize the operator J then compare Jst with jmat.T
+    # check Jst: vectorize the operator J then compare Jst with jmat.T.conj()
     jmat = make_j_mat(man, Y)
     test_Jst(man, Y, jmat)
     ginv_mat = make_g_inv_mat(man, Y)
@@ -139,7 +140,7 @@ def test_all_projections():
     for ii in range(10):
         a = man._rand_range_J()
         avec = man._vec_range_J(a)
-        jtout = (ginv_mat @ jmat.T @ avec).reshape(Y.shape)
+        jtout = man._unvec(ginv_mat @ jmat.T @ avec)
         
         jtout2 = man.g_inv_Jst(Y, a)
         diff = check_zero(jtout-jtout2)
@@ -207,8 +208,8 @@ def test_all_projections():
         dr1 = man.D_g(Y1, xi, omg1)
         x12 = man.contract_D_g(Y1, omg1, omg2)
 
-        p1 = trace(dr1 @ omg2.T)
-        p2 = trace(x12 @ xi.T)
+        p1 = rtrace(dr1 @ omg2.T.conj())
+        p2 = rtrace(x12 @ xi.T.conj())
         print(p1, p2, p1-p2)
 
     # now test christofel:
@@ -233,39 +234,6 @@ def test_all_projections():
         p2 = man.christoffel_form_explicit(
             Y1, xi, eta)
         """
-
-    if False:
-        for i in range(10):
-            Y1 = man.rand()
-            xi = man.randvec(Y1)
-            eta = randn(*Y.shape)
-            aout1 = man._rand_range_J()
-            aout2 = 4/man.alpha[1]*aout1
-            aout3 = man.J(Y1, man.g_inv_Jst(Y1, aout1))
-            print(check_zero(aout2-aout3))
-            aout4 = man.alpha[1]/4*aout3
-            print(check_zero(aout4-aout1))
-
-        for i in range(10):
-            Y1 = man.rand()
-            xi = man.randvec(Y1)
-
-            p1 = g_inv_jt_jgjt_inv_D_J(man, Y1, xi, eta)
-            dj = D_J(man, Y1, xi, eta)
-            aout = man.alpha[1]/4*dj
-            # apply_J_inv_JT(man, dj, aout, solve=True)
-            p2 = ginvJst(man, Y1, aout)
-            print(check_zero(p1-p2))
-
-        for i in range(10):
-            Y1 = man.rand()
-            xi = man.randvec(Y1)
-            eta = randn(*Y.shape)
-            p1 = g_inv_jt_jgjt_inv_D_J(man, Y1, xi, eta)
-            dj = D_J(man, Y1, xi, eta)
-            aout = man.alpha[1]/4*dj
-            p2 = ginvJst(man, Y1, aout)
-            print(check_zero(p1-p2))    
         
 
 def test_christ_flat():
@@ -277,12 +245,12 @@ def test_christ_flat():
     alpha = randint(1, 10, 2) * .1
     n = 5
     d = 3
-    man = RealStiefel(n, d, alpha=alpha)
+    man = ComplexStiefel(n, d, alpha=alpha)
     Y = man.rand()
     
     xi = man.randvec(Y)
-    aa = np.random.randn(n*d, n*d)
-    bb = np.random.randn(n*d)
+    aa = crandn(n*d, n*d)
+    bb = crandn(n*d)
     
     def v_func_flat(Y):
         return (aa @ Y.reshape(-1) + bb).reshape(n, d)
@@ -345,14 +313,14 @@ def test_chris_vectorfields():
     # we test that D_xi (eta g eta) = 2(eta g nabla_xi eta)
     n, d = (5, 3)
     alpha = randint(1, 10, 2) * .1
-    man = RealStiefel(n, d, alpha=alpha)
+    man = ComplexStiefel(n, d, alpha=alpha)
 
-    slp = randn(n*d)
+    slp = crandn(n*d)
     Y0 = man.rand()
-    slpxi = randn(n*d)
+    slpxi = crandn(n*d)
 
-    aa = randn(n*d, n*d)
-    aaxi = randn(n*d, n*d)
+    aa = crandn(n*d, n*d)
+    aaxi = crandn(n*d, n*d)
 
     def v_func(Y):
         return man.proj(Y, (aa @ (Y-Y0).reshape(-1)
@@ -392,12 +360,12 @@ def test_covariance_deriv():
     # check that it works, preseving everything
     n, d = (5, 3)
     alpha = randint(1, 10, 2) * .1
-    man = RealStiefel(n, d, alpha=alpha)
+    man = ComplexStiefel(n, d, alpha=alpha)
 
     Y = man.rand()
 
-    slp = np.random.randn(n*d)
-    aa = np.random.randn(n*d, n*d)
+    slp = crandn(n*d)
+    aa = crandn(n*d, n*d)
 
     def omg_func(Y):
         return (aa @ Y.reshape(-1) + slp).reshape(n, d)
@@ -448,52 +416,52 @@ def num_deriv(man, W, xi, func, dlt=1e-7):
 def test_rhess_02():
     n, d = (5, 3)
     alpha = randint(1, 10, 2) * .1
-    man = RealStiefel(n, d, alpha=alpha)
+    man = ComplexStiefel(n, d, alpha=alpha)
 
     Y = man.rand()
     UU = make_sym_pos(n)
 
     def f(Y):
-        return trace(UU @ Y @ Y.T)
+        return rtrace(UU @ Y @ Y.T.conj())
 
     def df(Y):
         return 2*UU @ Y
 
     def ehess_form(Y, xi, eta):
-        return 2 * trace(UU @ xi@eta.T)
+        return 2 * rtrace(UU @ xi@eta.T.conj())
 
     def ehess_vec(Y, xi):
         return 2 * UU @ xi
 
-    xxi = randn(n, d)
+    xxi = crandn(n, d)
     dlt = 1e-8
     Ynew = Y + dlt*xxi
     d1 = (f(Ynew) - f(Y))/dlt
     d2 = df(Y)
-    print(d1 - trace(d2 @ xxi.T))
+    print(d1 - rtrace(d2 @ xxi.T.conj()))
 
-    eeta = randn(n, d)
+    eeta = crandn(n, d)
 
-    d1 = trace((df(Ynew) - df(Y)) @ eeta.T) / dlt
+    d1 = rtrace((df(Ynew) - df(Y)) @ eeta.T.conj()) / dlt
     ehess_val = ehess_form(Y, xxi, eeta)
     dv2 = ehess_vec(Y, xxi)
-    print(trace(dv2 @ eeta.T))
+    print(rtrace(dv2 @ eeta.T.conj()))
     print(d1, ehess_val, d1-ehess_val)
 
     # now check the formula: ehess = xi (eta_func(f)) - <D_xi eta, df(Y)>
     # promote eta to a vector field.
 
-    m1 = randn(n, n)
-    m2 = randn(d, d)
+    m1 = crandn(n, n)
+    m2 = crandn(d, d)
 
     def eta_field(Yin):
         return m1 @ (Yin - Y) @ m2 + eeta
 
     # xietaf: should go to ehess(xi, eta) + df(Y) @ etafield)
-    xietaf = trace(df(Ynew) @ eta_field(Ynew).T -
-                   df(Y) @ eta_field(Y).T) / dlt
-    # appy eta_func to f: should go to tr(m1 @ xxi @ m2 @ df(Y).T)
-    Dxietaf = trace((eta_field(Ynew) - eta_field(Y)) @ df(Y).T)/dlt
+    xietaf = rtrace(df(Ynew) @ eta_field(Ynew).T.conj() -
+                    df(Y) @ eta_field(Y).T.conj()) / dlt
+    # appy eta_func to f: should go to tr(m1 @ xxi @ m2 @ df(Y).T.conj())
+    Dxietaf = rtrace((eta_field(Ynew) - eta_field(Y)) @ df(Y).T.conj())/dlt
     # this is ehess. should be same as d1 or ehess_val
     print(xietaf-Dxietaf)
     print(xietaf-Dxietaf-ehess_val)
@@ -524,7 +492,8 @@ def test_rhess_02():
     rhessvec_e = man.ehess2rhess(Y, egvec, ehvec_e, eta1)
     rhessval_e = man.inner(Y, rhessvec_e, xi1)
     rhessval_e1 = man.rhess02(Y, xi1, eta1, egvec, ehvec)
-    rhessval_e2 = man.rhess02_alt(Y, xi1, eta1, egvec, trace(ehvec@eta1.T))
+    rhessval_e2 = man.rhess02_alt(
+        Y, xi1, eta1, egvec, rtrace(ehvec@eta1.T.conj()))
     print(rhessval_e, rhessval_e1, rhessval_e2)
     
     print('rhessval_e %f ' % rhessval_e)
@@ -538,15 +507,16 @@ def test_rhess_02():
     print(check_zero(eta1-eta_proj(Y)))
     
     e1 = man.inner(Y, man.proj_g_inv(Y, df(Y)), eta_proj(Y))
-    e1a = trace(df(Y) @ eta_proj(Y).T)
+    e1a = rtrace(df(Y) @ eta_proj(Y).T.conj())
     print(e1, e1a, e1-e1a)
     Ynew = Y + xi1*dlt
     e2 = man.inner(Ynew, man.proj_g_inv(Ynew, df(Ynew)), eta_proj(Ynew))
-    e2a = trace(df(Ynew) @ eta_proj(Ynew).T)
+    e2a = rtrace(df(Ynew) @ eta_proj(Ynew).T.conj())
     print(e2, e2a, e2-e2a)
     
     first = (e2 - e1)/dlt
-    first1 = trace(df(Ynew) @ eta_proj(Ynew).T - df(Y) @ eta_proj(Y).T)/dlt
+    first1 = rtrace(df(Ynew) @ eta_proj(Ynew).T.conj() -
+                    df(Y) @ eta_proj(Y).T.conj())/dlt
     print(first-first1)
     
     val3, _, _ = calc_covar_numeric(man, Y, xi1, eta_proj)
@@ -567,7 +537,7 @@ def optim_test():
     for i in range(1):
         D = randint(1, 10, n) * 0.02 + 1
         OO = random_orthogonal(n)
-        A = OO @ np.diag(D) @ OO.T
+        A = OO @ np.diag(D) @ OO.T.conj()
         B = make_sym_pos(d)
         B = np.diag(randint(1, 10, d) * .2)
         
@@ -575,11 +545,11 @@ def optim_test():
         alpha = alpha/alpha[0]
         alpha = np.array([1, .6])
         print(alpha)
-        man = RealStiefel(n, d, alpha)
+        man = ComplexStiefel(n, d, alpha)
 
         @Callable
         def cost(X):
-            return trace(A @ X @ B @ X.T)
+            return rtrace(A @ X @ B @ X.T.conj())
 
         @Callable
         def egrad(X):
@@ -593,7 +563,7 @@ def optim_test():
             X = man.rand()
             xi = man.randvec(X)
             d1 = num_deriv(man, X, xi, cost)
-            d2 = trace(egrad(X) @ xi.T)
+            d2 = rtrace(egrad(X) @ xi.T.conj())
             print(check_zero(d1-d2))
         
         prob = Problem(
@@ -612,7 +582,7 @@ def optim_test():
             # print(cost(opt))
             min_val = 1e190
             # min_X = None
-            for i in range(100):
+            for i in range(10000):
                 Xi = man.rand()
                 c = cost(Xi)
                 if c < min_val:
@@ -621,14 +591,14 @@ def optim_test():
                 if i % 1000 == 0:
                     print('i=%d min=%f' % (i, min_val))
             print(min_val)
-        man1 = RealStiefel(n, d, alpha=np.array([1, 1]))
+        man1 = ComplexStiefel(n, d, alpha=np.array([1, 1]))
         prob = Problem(
             man1, cost, egrad=egrad, ehess=ehess)
 
         solver = TrustRegions(maxtime=100000, maxiter=100)
         opt = solver.solve(prob, x=XInit, Delta_bar=250)
 
-        man1 = RealStiefel(n, d, alpha=np.array([1, .5]))
+        man1 = ComplexStiefel(n, d, alpha=np.array([1, .5]))
         prob = Problem(
             man1, cost, egrad=egrad, ehess=ehess)
 
@@ -647,34 +617,34 @@ def optim_test2():
     for i in range(1):
         D = randint(1, 10, n) * 0.02 + 1
         OO = random_orthogonal(n)
-        A = OO @ np.diag(D) @ OO.T
+        A = OO @ np.diag(D) @ OO.T.conj()
         B = make_sym_pos(d)
         
         alpha = randint(1, 10, 2) * .1
         alpha = alpha/alpha[0]
         print(alpha)
-        man = RealStiefel(n, d, alpha)
+        man = ComplexStiefel(n, d, alpha)
         A2 = A @ A
         @Callable
         def cost(X):
-            return trace(A @ X @ B @ X.T @ A2 @ X @ B @ X.T @ A)
+            return rtrace(A @ X @ B @ X.T.conj() @ A2 @ X @ B @ X.T.conj() @ A)
 
         @Callable
         def egrad(X):
-            R = 4*A2 @ X @ B @ X.T @ A2 @ X @ B
+            R = 4*A2 @ X @ B @ X.T.conj() @ A2 @ X @ B
             return R
 
         @Callable
         def ehess(X, H):
-            return 4*A2 @ H @ B @ X.T @ A2 @ X @ B +\
-                4*A2 @ X @ B @ H.T @ A2 @ X @ B +\
-                4*A2 @ X @ B @ X.T @ A2 @ H @ B
+            return 4*A2 @ H @ B @ X.T.conj() @ A2 @ X @ B +\
+                4*A2 @ X @ B @ H.T.conj() @ A2 @ X @ B +\
+                4*A2 @ X @ B @ X.T.conj() @ A2 @ H @ B
 
         if False:
             X = man.rand()
             xi = man.randvec(X)
             d1 = num_deriv(man, X, xi, cost)
-            d2 = trace(egrad(X) @ xi.T)
+            d2 = rtrace(egrad(X) @ xi.T.conj())
             print(check_zero(d1-d2))
             d3 = num_deriv(man, X, xi, egrad)
             d4 = ehess(X, xi)
@@ -705,14 +675,14 @@ def optim_test2():
                 if i % 1000 == 0:
                     print('i=%d min=%f' % (i, min_val))
             print(min_val)
-        man1 = RealStiefel(n, d, alpha=np.array([1, 1]))
+        man1 = ComplexStiefel(n, d, alpha=np.array([1, 1]))
         prob = Problem(
             man1, cost, egrad=egrad, ehess=ehess)
 
         solver = TrustRegions(maxtime=100000, maxiter=100)
         opt = solver.solve(prob, x=XInit, Delta_bar=250)
 
-        man1 = RealStiefel(n, d, alpha=np.array([1, .5]))
+        man1 = ComplexStiefel(n, d, alpha=np.array([1, .5]))
         prob = Problem(
             man1, cost, egrad=egrad, ehess=ehess)
 
@@ -732,37 +702,37 @@ def optim_test3():
             np.concatenate([randint(1, 10, d), np.zeros(n-d)]))
         D = randint(1, 10, n) * 0.02 + 1
         OO = random_orthogonal(n)
-        A = OO @ np.diag(D) @ OO.T
+        A = OO @ np.diag(D) @ OO.T.conj()
 
         alpha = randint(1, 10, 2)
         alpha = alpha/alpha[0]
         print(alpha)
-        man = RealStiefel(n, d, alpha)
+        man = ComplexStiefel(n, d, alpha)
         cf = 10
         B2 = B @ B
 
         @Callable
         def cost(X):
-            return cf * trace(
-                B @ X @ X.T @ B2 @ X @ X.T @ B) +\
-                trace(X.T @ A @ X)
+            return cf * rtrace(
+                B @ X @ X.T.conj() @ B2 @ X @ X.T.conj() @ B) +\
+                rtrace(X.T.conj() @ A @ X)
         
         @Callable
         def egrad(X):
-            R = cf*4*B2 @ X @ X.T @ B2 @ X + 2*A @ X
+            R = cf*4*B2 @ X @ X.T.conj() @ B2 @ X + 2*A @ X
             return R
 
         @Callable
         def ehess(X, H):
-            return 4*cf*B2 @ H @ X.T @ B2 @ X +\
-                4*cf*B2 @ X @ H.T @ B2 @ X +\
-                4*cf*B2 @ X @ X.T @ B2 @ H + 2*A @ H
+            return 4*cf*B2 @ H @ X.T.conj() @ B2 @ X +\
+                4*cf*B2 @ X @ H.T.conj() @ B2 @ X +\
+                4*cf*B2 @ X @ X.T.conj() @ B2 @ H + 2*A @ H
         
         if False:
             X = man.rand()
             xi = man.randvec(X)
             d1 = num_deriv(man, X, xi, cost)
-            d2 = trace(egrad(X) @ xi.T)
+            d2 = rtrace(egrad(X) @ xi.T.conj())
             print(check_zero(d1-d2))
             d3 = num_deriv(man, X, xi, egrad)
             d4 = ehess(X, xi)
@@ -790,15 +760,15 @@ def optim_test3():
                 if i % 1000 == 0:
                     print('i=%d min=%f' % (i, min_val))
             print(min_val)
-        man1 = RealStiefel(n, d, alpha=np.array([1, 1]))
+        man1 = ComplexStiefel(n, d, alpha=np.array([1, 1]))
         prob = Problem(
             man1, cost, egrad=egrad, ehess=ehess)
 
         solver = TrustRegions(maxtime=100000, maxiter=100)
         opt = solver.solve(prob, x=XInit, Delta_bar=250)
 
-        man1 = RealStiefel(n, d, alpha=np.array([1, .5]))
-        # man1 = RealStiefel(n, d, alpha=np.array([1, 1]))
+        man1 = ComplexStiefel(n, d, alpha=np.array([1, .5]))
+        # man1 = ComplexStiefel(n, d, alpha=np.array([1, 1]))
         prob = Problem(
             man1, cost, egrad=egrad, ehess=ehess)
 
@@ -811,29 +781,28 @@ def test_geodesics():
     alpha = np.random.randint(1, 10, (2)) * .1
     # alpha = np.array([1, .5])
     m, d = (5, 3)
-    man = RealStiefel(m, d, alpha=alpha)
+    man = ComplexStiefel(m, d, alpha=alpha)
     Y = man.rand()
 
     alf = alpha[1]/alpha[0]
     
     def calc_gamma(man, Y, eta):
-        etaxiy = 2*eta @ (eta.T@Y)
-        egcoef = Y @ (eta.T@eta)
+        etaxiy = 2*eta @ (eta.T.conj()@Y)
+        egcoef = Y @ (eta.T.conj()@eta)
         ft = 1 - alf
-        egcoef += ft*(etaxiy - Y@(Y.T@etaxiy))
+        egcoef += ft*(etaxiy - Y@(Y.T.conj()@etaxiy))
         return egcoef
     eta = man.randvec(Y)
     g1 = calc_gamma(man, Y, eta)
     g2 = man.christoffel_gamma(Y, eta, eta)
-    print(check_zero(g1-g2))
-
-    egrad = randn(m, d)
-    print(trace(g1 @ egrad.T))
+    print(g1-g2)
+    egrad = crandn(m, d)
+    print(rtrace(g1 @ egrad.T.conj()))
     print(man.rhess02_alt(Y, eta, eta, egrad, 0))
 
     # try to see if the solution is good:
-    A = Y.T @ eta
-    S0 = eta.T @ eta
+    A = Y.T.conj() @ eta
+    S0 = eta.T.conj() @ eta
 
     e_mat = np.bmat([[(2*alf-1)*A, -S0 - 2*(1-alf)*A@A],
                      [np.eye(d), A]])
@@ -859,10 +828,10 @@ def test_geodesics():
     print(ffddot + calc_gamma(man, fval, ffdot))
 
     # second solution:
-    K = eta - Y @ (Y.T @ eta)
+    K = eta - Y @ (Y.T.conj() @ eta)
     Yp, R = np.linalg.qr(K)
 
-    x_mat = np.bmat([[2*alf*A, -R.T], [R, zeros((d, d))]])
+    x_mat = np.bmat([[2*alf*A, -R.T.conj()], [R, zeros((d, d))]])
     Yt = np.bmat([Y, Yp]) @ expm(t*x_mat)[:, :d] @ \
         expm(t*(1-2*alf)*A)
     x_d_mat = x_mat[:, :d].copy()
@@ -873,8 +842,8 @@ def test_geodesics():
     Yddt = np.bmat([Y, Yp]) @ expm(t*x_mat) @ x_dd_mat @\
         expm(t*(1-2*alf)*A)
     print(Yddt + calc_gamma(man, Yt, Ydt))
-    print(man.exp(Y, t*eta)-Yt)
-        
+    print(man.exp(Y, t*eta) - Yt)
+    
         
 if __name__ == '__main__':
     optim_test()

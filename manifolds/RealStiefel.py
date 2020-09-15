@@ -210,7 +210,18 @@ class RealStiefel(NullRangeManifold):
         return unvech(vec)
 
     def exp(self, Y, eta):
-        # geodesic
+        """ Geodesics, the formula involves matrices of size 2d
+
+        Parameters
+        ----------
+        Y    : a manifold point
+        eta  : tangent vector
+        
+        Returns
+        ----------
+        gamma(1), where gamma(t) is the geodesics at Y in direction eta
+
+        """
         K = eta - Y @ (Y.T @ eta)
         Yp, R = la.qr(K)
         alf = self.alpha[1]/self.alpha[0]
@@ -221,6 +232,8 @@ class RealStiefel(NullRangeManifold):
             expm((1-2*alf)*A)
 
     def exp_alt(self, Y, eta):
+        """ Geodesics, alternative formula
+        """
         alf = self.alpha[1]/self.alpha[0]
         A = Y.T @ eta
         e_mat = bmat([[(2*alf-1)*A, -eta.T@eta - 2*(1-alf)*A@A],

@@ -469,7 +469,18 @@ class RealPositiveSemidefinite(NullRangeManifold):
         return a
 
     def exp(self, X, eta):
-        # geodesic
+        """Geodesic from X in direction eta
+
+        Parameters
+        ----------
+        X    : a manifold point
+        eta  : tangent vector
+        
+        Returns
+        ----------
+        gamma(1), where gamma(t) is the geodesics at X in direction eta
+
+        """
         K = eta.tY - X.Y @ (X.Y.T @ eta.tY)
         Yp, R = la.qr(K)
         alf = self.alpha[1]/self.alpha[0]

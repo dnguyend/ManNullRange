@@ -835,7 +835,71 @@ def optim_test():
     print(np.max(np.abs(A0-opt_mat)))
 
 
+def test_geodesics():
+    from scipy.linalg import expm
+    alpha = np.random.randint(1, 10, (2)) * .1
+    beta = alpha[1] * .1
+    m, d = (5, 3)
+    man = ComplexPositiveSemidefinite(m, d, alpha=alpha, beta=beta)
+    X = man.rand()
+
+    alf = alpha[1]/alpha[0]
+    
+    def calc_gamma(man, X, xi, eta):
+        g_inv_Jst_solve_J_g_in_Jst_DJ = man.g_inv(
+            X, man.Jst(X, man.solve_J_g_inv_Jst(
+                X, man.D_J(X, xi, eta))))
+        proj_christoffel = man.proj_g_inv(
+            X, man.christoffel_form(X, xi, eta))
+        return g_inv_Jst_solve_J_g_in_Jst_DJ + proj_christoffel
+        
+    eta = man.randvec(X)
+    g1 = calc_gamma(man, X, eta, eta)
+    g2 = man.christoffel_gamma(X, eta, eta)
+    print(man._vec(g1-g2))
+
+    egrad = man._rand_ambient()
+    print(man.base_inner_ambient(g1, egrad))
+    print(man.rhess02_alt(X, eta, eta, egrad, 0))
+    print(man.rhess02(X, eta, eta, egrad, man.zerovec(X)))
+    # second solution:
+    A = X.Y.T.conj() @ eta.tY
+    t = 2
+    K = eta.tY - X.Y @ (X.Y.T.conj() @ eta.tY)
+    Yp, R = np.linalg.qr(K)
+
+    x_mat = np.bmat([[2*alf*A, -R.T.conj()], [R, zeros((d, d))]])
+    Yt = np.bmat([X.Y, Yp]) @ expm(t*x_mat)[:, :d] @ \
+        expm(t*(1-2*alf)*A)
+    x_d_mat = x_mat[:, :d].copy()
+    x_d_mat[:d, :] += (1-2*alf) * A
+    Ydt = np.bmat([X.Y, Yp]) @ expm(t*x_mat) @ x_d_mat @\
+        expm(t*(1-2*alf)*A)
+    x_dd_mat = x_mat @ x_d_mat + x_d_mat @ ((1-2*alf)*A)
+    Yddt = np.bmat([X.Y, Yp]) @ expm(t*x_mat) @ x_dd_mat @\
+        expm(t*(1-2*alf)*A)
+    
+    sqrtP = X.evec @ np.diag(np.sqrt(X.evl)) @ X.evec.T.conj()
+    isqrtP = X.evec @ np.diag(1/np.sqrt(X.evl)) @ X.evec.T.conj()
+    Pinn = t*isqrtP@eta.tP@isqrtP
+    ePinn = expm(Pinn)
+    Pt = sqrtP@ePinn@sqrtP
+    Pdt = eta.tP@isqrtP@ePinn@sqrtP
+    Pddt = eta.tP@isqrtP@ ePinn@isqrtP@eta.tP
+    
+    Xt = psd_point(np.array(Yt), np.array(Pt))
+    Xdt = psd_ambient(np.array(Ydt), np.array(Pdt))
+    Xddt = psd_ambient(np.array(Yddt), np.array(Pddt))
+    gcheck = Xddt + calc_gamma(man, Xt, Xdt, Xdt)
+    
+    print(man._vec(gcheck))
+    Xt1 = man.exp(X, t*eta)
+    print((Xt1.Y - Xt.Y))
+    print((Xt1.P - Xt.P))
+
+    
 if __name__ == '__main__':
+    test_geodesics()
     optim_test()
     test_lyapunov()
     test_all_projections()

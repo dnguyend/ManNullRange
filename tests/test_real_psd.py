@@ -807,6 +807,8 @@ def test_geodesics():
         
     eta = man.randvec(X)
     g1 = calc_gamma(man, X, eta, eta)
+    g2 = man.christoffel_gamma(X, eta, eta)
+    print(man._vec(g1-g2))
 
     egrad = man._rand_ambient()
     print(man.base_inner_ambient(g1, egrad))
@@ -849,5 +851,6 @@ def test_geodesics():
 
     
 if __name__ == '__main__':
+    test_geodesics()
     optim_test()
     test_all_projections()
