@@ -101,11 +101,6 @@ class ComplexFlag(NullRangeManifold):
     def typicaldist(self):
         return np.sqrt(sum(self._dimension))
 
-    def dist(self, X, Y):
-        """ Geodesic distance. Not implemented
-        """
-        raise NotImplementedError
-
     def base_inner_ambient(self, eta1, eta2):
         return rtrace(eta1.T.conj() @ eta2)
 
@@ -293,9 +288,6 @@ class ComplexFlag(NullRangeManifold):
         """
         return mat.T.conj()
 
-    def J_g_inv_Jst(self, X, a):
-        raise NotImplementedError
-
     def solve_J_g_inv_Jst(self, X, b):
         alf = 1/self.alpha
         a = dict()
@@ -348,15 +340,13 @@ class ComplexFlag(NullRangeManifold):
     def egrad2rgrad(self, X, U):
         return self.proj_g_inv(X, U)
 
-    def rhess02_alt(self, X, xi, eta, egrad, ehess):
-        raise NotImplementedError
-    
-    def rhess02(self, X, xi, eta, egrad, ehess_val):
+    def rhess02(self, X, xi, eta, egrad, ehess):
         egcoef = np.zeros_like(eta)
         ph = self.dvec
         alpha = self.alpha
         gidx = self._g_idx
         p = ph.shape[0]-1
+        ehess_val = self.base_inner_ambient(ehess, eta)
 
         for tt in range(1, p+1):
             bt, et = gidx[tt]
@@ -512,4 +502,9 @@ class ComplexFlag(NullRangeManifold):
                 start += vlen
         return dout
 
+    def exp(self, X, eta):
+        """ We have closed form geodesics only when alpha
+        is of a special form. We can use stiefel geodesic for that
+        """
+        raise NotImplementedError("Try using calc_complex_stiefel_geodesics")
     

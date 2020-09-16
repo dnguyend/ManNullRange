@@ -1,5 +1,6 @@
 import numpy as np
 import numpy.linalg as la
+from scipy.linalg import expm
 from numpy import sqrt, zeros, arange, trace
 from numpy.random import randn
 
@@ -448,3 +449,58 @@ def rtrace(A):
     """ Real part of trace
     """
     return trace(A).real
+
+
+def calc_stiefel_geodesics(Y, eta, rtio, t=1):
+    """ Geodesics for Stiefel manifold with metric
+    trace(alpha0 eta.T@eta + (alpha1- alpha0)eta.T@Y@Y.T@eta)
+    gamma is the geodesic curve with
+       gamma(0) = Y
+       dot{gamma}(0) = eta
+    
+
+    Parameters
+    ----------
+    Y    : A point on the Stiefel manifold
+    eta  : A tangent vector at Y
+    rtio : alpha[1]/alpha[0]
+    t    : real number
+
+    Returns:
+    ----------
+    gamma(t)
+    """
+    p = Y.shape[1]
+    A = Y.T @ eta
+    K = eta - Y @ (Y.T @ eta)
+    Yp, R = np.linalg.qr(K)
+    x_mat = np.bmat([[2*rtio*A, -R.T], [R, zeros((p, p))]])
+    return np.bmat([Y, Yp]) @ expm(t*x_mat)[:, :p] @ \
+        expm(t*(1-2*rtio)*A)
+
+
+def calc_complex_stiefel_geodesics(Y, eta, rtio, t=1):
+    """ Geodesics for Stiefel manifold with metric
+    trace(alpha0 eta.T.conj()@eta + (alpha1- alpha0)eta.T.conj()@Y@Y.H@eta)
+    gamma is the geodesic curve with
+       gamma(0) = Y
+       dot{gamma}(0) = eta
+
+    Parameters
+    ----------
+    Y    : A point on the Stiefel manifold
+    eta  : A tangent vector at Y
+    rtio : alpha[1]/alpha[0]
+    t    : real number
+
+    Returns:
+    ----------
+    gamma(t)
+    """
+    p = Y.shape[1]
+    A = Y.T.conj() @ eta
+    K = eta - Y @ (Y.T.conj() @ eta)
+    Yp, R = np.linalg.qr(K)
+    x_mat = np.bmat([[2*rtio*A, -R.T.conj()], [R, zeros((p, p))]])
+    return np.bmat([Y, Yp]) @ expm(t*x_mat)[:, :p] @ \
+        expm(t*(1-2*rtio)*A)

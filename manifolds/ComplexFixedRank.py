@@ -2,10 +2,11 @@ from __future__ import division
 from .NullRangeManifold import NullRangeManifold
 import numpy as np
 import numpy.linalg as la
+from scipy.linalg import expm
 from numpy import zeros, allclose
 from .tools import (
     hsym, ahsym, complex_extended_lyapunov, crandn, rtrace, cvec,
-    cunvec)
+    cunvec, calc_complex_stiefel_geodesics)
 
 
 if not hasattr(__builtins__, "xrange"):
@@ -344,6 +345,16 @@ class ComplexFixedRank(NullRangeManifold):
             V@(V.T.conj()@omg.tV),
             1/bt*Dp)
 
+    def christoffel_gamma(self, X, xi, eta):
+        dprj = self.D_proj(X, xi, eta)
+        proj_christoffel = self.proj_g_inv(
+            X, self.christoffel_form(X, xi, eta))
+        return proj_christoffel - dprj
+
+    def rhess02_alt(self, X, xi, eta, egrad, ehess_val):
+        return ehess_val - self.base_inner_ambient(
+            self.christoffel_gamma(X, xi, eta), egrad)
+    
     def retr(self, X, E):
         """  retract by SVD on the U+E.tU and V+E.tV components
         and by geodesic approximation for the positive definite part
@@ -418,3 +429,32 @@ class ComplexFixedRank(NullRangeManifold):
                           cunvec(vec[d1:d1+d2], (self.n, self.p)),
                           cunvec(vec[d1+d2:], (self.p, self.p)))
 
+    def exp(self, X, eta):
+        """ Geodesic exponent. gamma(1) for a geodesics gamma with
+            gamma(0) = X
+            dot{gamma}(0) = eta
+
+        Parameters
+        ----------
+        X   : fr_point
+        eta : tangent at X, fr_ambient
+
+        Results
+        ----------
+        gamma(1)
+        """
+        
+        Ut = calc_complex_stiefel_geodesics(
+            X.U, eta.tU, self.alpha[1]/self.alpha[0])
+        Vt = calc_complex_stiefel_geodesics(
+            X.V, eta.tV, self.gamma[1]/self.gamma[0])
+            
+        sqrtP = X.evec @ np.diag(np.sqrt(X.evl)) @ X.evec.T.conj()
+        isqrtP = X.evec @ np.diag(1/np.sqrt(X.evl)) @ X.evec.T.conj()
+        Pinn = isqrtP@eta.tP@isqrtP
+        ePinn = expm(Pinn)
+        Pt = sqrtP@ePinn@sqrtP
+    
+        return fr_point(np.array(Ut),
+                        np.array(Vt),
+                        np.array(Pt))

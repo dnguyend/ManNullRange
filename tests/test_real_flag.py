@@ -694,6 +694,25 @@ def optim_test():
         opt = solver.solve(prob, x=XInit, Delta_bar=250)
 
 
+def test_gamma():
+    dvec = np.array([0, 30, 2, 1])
+    p = dvec.shape[0]-1
+    alpha = randint(1, 10, (p, p+1)) * .1
+
+    dvec[0] = 1000 - dvec[1:].sum()
+    man = RealFlag(dvec, alpha=alpha)
+    X = man.rand()
+    eta = man.randvec(X)
+    g2 = man.christoffel_gamma(X, eta, eta)
+    
+    egrad = man._rand_ambient()
+    ehess = man._rand_ambient()
+    ehess_val = man.base_inner_ambient(ehess, eta)
+    print(man.rhess02_alt(X, eta, eta, egrad, ehess_val))
+    print(man.rhess02(X, eta, eta, egrad, ehess))
+    print(ehess_val - man.base_inner_ambient(g2, egrad))
+    
+        
 if __name__ == '__main__':
     optim_test()
         
