@@ -1,5 +1,5 @@
 # ManNullRange
-This project provides the python implementation of the paper <em> Operator-Valued Formulas for Riemannian Gradient and Hessian and families of tractable metrics in optimization and machine learning</em>.
+This project provides the python implementation of the paper [<em> Operator-Valued Formulas for Riemannian Gradient and Hessian and families of tractable metrics in optimization and machine learning</em>](https://arxiv.org/abs/2009.10159).
 
 The main idea of the paper is, given a manifold where its tangent space is a nullspace of a family of full rank operators J (e.g. the Jacobian of the constraint equations) parametrized by points on the manifold, we can introduce a Riemannian metrics as an operator-valued function on the manifold. With a technical requirement on the metric, this setup allows us to compute the Riemannian gradient, the Levi-Civita connection (which gives the geodesics equation), the Riemannian Hessian by operator-valued formulas. The formulas could be evaluated symbolically in many cases, which simplifies to give known or new formulas on manifolds arising in optimization, machine learning, and statistical problems, and could be evaluated numerically when there is no algebraic simplification.
 
