@@ -3,6 +3,9 @@ This project provides the python implementation of the paper <em> Operator-Value
 
 The main idea of the paper is, given a manifold where its tangent space is a nullspace of a family of full rank operators J (e.g. the Jacobian of the constraint equations) parametrized by points on the manifold, we can introduce a Riemannian metrics as an operator-valued function on the manifold. With a technical requirement on the metric, this setup allows us to compute the Riemannian gradient, the Levi-Civita connection (which gives the geodesics equation), the Riemannian Hessian by operator-valued formulas. The formulas could be evaluated symbolically in many cases, which simplifies to give known or new formulas on manifolds arising in optimization, machine learning, and statistical problems, and could be evaluated numerically when there is no algebraic simplification.
 
+![formulas1](https://github.com/dnguyend/ManNullRange/blob/master/formulas-1.svg)
+![formulas2](https://github.com/dnguyend/ManNullRange/blob/master/formulas-2.svg)
+
 We apply this to several families of metrics on manifolds arising in practice, as explained in the paper:
 
 1. We provide a new family of metrics, connecting both the embedded metric and the canonical metric on *Stiefel* manifolds ([RealStiefel.py](https://github.com/dnguyend/ManNullRange/blob/master/manifolds/RealStiefel.py) and [ComplexStiefel.py](https://github.com/dnguyend/ManNullRange/blob/master/manifolds/ComplexStiefel.py)), with explicit formulas for gradient and Levi-Civita connection and Hessian. We show it has closed-form geodesics, generalizing both geodesics formulas in [1]. The symbolic calculation and a numerical optimization example are [here](https://github.com/dnguyend/ManNullRange/blob/master/tests/stiefel_test.ipynb). 
