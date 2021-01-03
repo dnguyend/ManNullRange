@@ -689,14 +689,20 @@ class RealFlag(NullRangeManifold):
             callback = printxk
         else:
             callback = None
-
-        if self.log_gtol is None:
-            res = minimize(dist, x0, method=self.log_method,
-                           jac=jac, hessp=hessp, callback=callback)
-        else:
-            res = minimize(dist, x0, method=self.log_method,
-                           jac=jac, hessp=hessp, callback=callback,            
-                           options={'gtol': self.log_gtol})
+        res = {'fun': np.nan, 'x': np.zeros_like(x0),
+               'success': False,               
+               'message': 'minimizer exception'}
+        try:
+            if self.log_gtol is None:
+                res = minimize(dist, x0, method=self.log_method,
+                               jac=jac, hessp=hessp, callback=callback)
+            else:
+                res = minimize(dist, x0, method=self.log_method,
+                               jac=jac, hessp=hessp, callback=callback,            
+                               options={'gtol': self.log_gtol})
+        except Exception:
+            pass
+        
         stat = [(a, res[a]) for a in res.keys() if a not in ['x', 'jac']]
         A1, R1 = unvec(res['x'])
         if self.log_stats:

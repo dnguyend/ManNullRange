@@ -366,22 +366,28 @@ class RealStiefel(NullRangeManifold):
         else:
             callback = None
 
-        if self.log_gtol is None:
-            if self.log_method.startswith('trust'):
-                res = minimize(dist, x0, method=self.log_method,
-                               jac=jac, hessp=hessp, callback=callback)
+        res = {'fun': np.nan, 'x': np.zeros_like(x0),
+               'success': False,
+               'message': 'minimizer exception'}
+        try:
+            if self.log_gtol is None:
+                if self.log_method.startswith('trust'):
+                    res = minimize(dist, x0, method=self.log_method,
+                                   jac=jac, hessp=hessp, callback=callback)
+                else:
+                    res = minimize(dist, x0, method=self.log_method,
+                                   jac=jac, callback=callback)                
             else:
-                res = minimize(dist, x0, method=self.log_method,
-                               jac=jac, callback=callback)                
-        else:
-            if self.log_method.startswith('trust'):            
-                res = minimize(dist, x0, method=self.log_method,
-                               jac=jac, hessp=hessp, callback=callback,            
-                               options={'gtol': self.log_gtol})
-            else:
-                res = minimize(dist, x0, method=self.log_method,
-                               jac=jac, callback=callback,
-                               options={'gtol': self.log_gtol})
+                if self.log_method.startswith('trust'):            
+                    res = minimize(dist, x0, method=self.log_method,
+                                   jac=jac, hessp=hessp, callback=callback,            
+                                   options={'gtol': self.log_gtol})
+                else:
+                    res = minimize(dist, x0, method=self.log_method,
+                                   jac=jac, callback=callback,
+                                   options={'gtol': self.log_gtol})
+        except Exception:
+            pass
                 
         stat = [(a, res[a]) for a in res.keys() if a not in ['x', 'jac']]
         A1, R1 = unvec(res['x'])
