@@ -255,8 +255,8 @@ class RealStiefel(NullRangeManifold):
             (bmat([Y, eta]) @ expm(e_mat))[:, :self.d] @ expm((1-2*alf)*A))
 
     def dist(self, X, Y):
-        lg = self.log(self, X, Y, show_steps=False, init_type=1)
-        return np.sqrt(self.norm(X, lg))
+        lg = self.log(X, Y, show_steps=False, init_type=1)
+        return self.norm(X, lg)
 
     def log(self, Y, Y1, show_steps=False, init_type=1):
         """Inverse of exp

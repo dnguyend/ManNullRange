@@ -68,6 +68,7 @@ class RealFlag(NullRangeManifold):
             raise(ValueError(
                 'log method must be one of trust-ncg or trust-krylov'))
         self.log_gtol = None
+        self.lbd = self.make_lbd()
                         
     def inner(self, X, Ba, Bb=None):
         """ Inner product (Riemannian metric) on the tangent space.
@@ -517,9 +518,43 @@ class RealFlag(NullRangeManifold):
         return np.array(
             np.bmat([X, Xp]) @ expm(x_mat)[:, :self.d] @ expm((1-2*alf)*A))
 
-    def dist(self, X, Y):
-        lg = self.log(self, X, Y, show_steps=False, init_type=1)
-        return np.sqrt(self.norm(X, lg))    
+    def _dist(self, X, Y):
+        """This function is tentative. It only works
+        for two points sufficiently close, and it is not provable
+        to be the length minimizing distance
+        Use at your own risk
+        """
+        lg = self.log(X, Y, show_steps=False, init_type=0)
+        return self.norm(X, lg)
+
+    def euclidean_dist(self, X, Y):
+        """ Euclidean distance. Useful to compare two
+        elememt
+        """
+        YTX = Y.T@X
+        return np.sqrt(2*(np.sum(self.lbd * self.lbd) - np.trace(
+            (YTX*self.lbd[None, :])@(YTX.T*self.lbd[None, :]))))
+
+    def make_lbd(self):
+        dd = self.dvec.shape[0]
+
+        def coef(a, dd):
+            if dd % 2 == 0:
+                if a < dd // 2 - 1:
+                    return - (dd // 2) + a + 1
+                else:
+                    return - (dd // 2) + a + 2
+            else:
+                if a < (dd-1)//2:
+                    return -(dd-1)//2 + a
+                else:
+                    return -(dd-1)//2 + a + 1
+
+        dsum = self.dvec[1:].cumsum()
+        lbd = np.concatenate([np.ones(self.dvec[a+1])*coef(a, dd)
+                              for a in range(dsum.shape[0])])
+        # return .5 + lbd / lbd.sum()
+        return lbd    
 
     def log(self, X, X1, show_steps=False, init_type=0):
         """
@@ -539,28 +574,6 @@ class RealFlag(NullRangeManifold):
         alf = self.alpha[0, 1]/self.alpha[0, 0]        
         d = self.dvec[1:].sum()
         sqrt2 = np.sqrt(2)
-
-        def make_lbd():
-            dd = self.dvec.shape[0]
-
-            def coef(a, dd):
-                if dd % 2 == 0:
-                    if a < dd // 2 - 1:
-                        return - (dd // 2) + a + 1
-                    else:
-                        return - (dd // 2) + a + 2
-                else:
-                    if a < (dd-1)//2:
-                        return -(dd-1)//2 + a
-                    else:
-                        return -(dd-1)//2 + a + 1
-
-            dsum = self.dvec[1:].cumsum()
-            lbd = np.concatenate([np.ones(self.dvec[a+1])*coef(a, dd)
-                                  for a in range(dsum.shape[0])])
-            # return .5 + lbd / lbd.sum()
-            return lbd
-        lbd = make_lbd()
         
         def getQ():
             """ algorithm: find a basis in linear span of Y Y1
@@ -579,6 +592,7 @@ class RealFlag(NullRangeManifold):
         Q = getQ()
         k = Q.shape[1]
         p = self.p
+        lbd = self.lbd
 
         def asym(mat):
             return 0.5*(mat - mat.T)
