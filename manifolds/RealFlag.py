@@ -1,10 +1,11 @@
 from __future__ import division
-from .NullRangeManifold import NullRangeManifold
 import numpy as np
 import numpy.linalg as la
 from numpy import trace, zeros, zeros_like
 from numpy.random import randn
-
+from scipy.linalg import expm, expm_frechet, null_space
+from scipy.sparse.linalg import cg, LinearOperator
+from .NullRangeManifold import NullRangeManifold
 
 if not hasattr(__builtins__, "xrange"):
     xrange = range
@@ -39,7 +40,9 @@ class RealFlag(NullRangeManifold):
 
     """
     
-    def __init__(self, dvec, alpha=None):
+    def __init__(self, dvec, alpha=None,
+                 log_stats=False,
+                 log_method=None):
         self.dvec = np.array(dvec)
         self.n = dvec.sum()
         self.d = dvec[1:].sum()
@@ -56,7 +59,16 @@ class RealFlag(NullRangeManifold):
             self.alpha[:, 0] = 1
         else:
             self.alpha = alpha
-            
+        self.log_stats = log_stats
+        if log_method is None:
+            self.log_method = 'trust-krylov'
+        elif log_method.lower() in ['trust-ncg', 'trust-krylov']:
+            self.log_method = log_method.lower()
+        else:
+            raise(ValueError(
+                'log method must be one of trust-ncg or trust-krylov'))
+        self.log_gtol = None
+                        
     def inner(self, X, Ba, Bb=None):
         """ Inner product (Riemannian metric) on the tangent space.
         The tangent space is given as a matrix of size mm_degree * m
@@ -485,8 +497,210 @@ class RealFlag(NullRangeManifold):
         return dout
 
     def exp(self, X, eta):
-        """ We have closed form geodesics only when alpha
-        is of a special form. We can use stiefel geodesic for that
         """
-        raise NotImplementedError("Try using calc_stiefel_geodesics")
+        Use this only if 
+        self.alpha[:, 1] = self.alpha[0, 1]
+        self.alpha[:, 0] = self.alpha[0, 0]
+        This is Stiefel geodesics
+        """
+        assert(
+            1e-14 > np.max(np.abs(np.abs(self.alpha[:, 0] - self.alpha[:, 0]))))
+        assert(
+            1e-14 > np.max(np.abs(np.abs(self.alpha[:, 1] - self.alpha[:, 1]))))
+        
+        K = eta - X @ (X.T @ eta)
+        Xp, R = la.qr(K)
+        alf = self.alpha[0, 1]/self.alpha[0, 0]
+        A = X.T @eta
+        x_mat = np.bmat([[2*alf*A, -R.T],
+                         [R, np.zeros((self.d, self.d))]])
+        return np.array(
+            np.bmat([X, Xp]) @ expm(x_mat)[:, :self.d] @ expm((1-2*alf)*A))
+
+    def dist(self, X, Y):
+        lg = self.log(self, X, Y, show_steps=False, init_type=1)
+        return np.sqrt(self.norm(X, lg))    
+
+    def log(self, X, X1, show_steps=False, init_type=0):
+        """
+        Use this only if 
+        self.alpha[:, 1] = self.alpha[0, 1]
+        self.alpha[:, 0] = self.alpha[0, 0]
+        This is Stiefel geodesics
+        Only use init_type 0 now = may change in the future
+        """
+        assert(
+            1e-14 > np.max(np.abs(np.abs(self.alpha[:, 0] - self.alpha[:, 0]))))
+        assert(
+            1e-14 > np.max(np.abs(np.abs(self.alpha[:, 1] - self.alpha[:, 1]))))
+        if init_type != 0:
+            print("Will init with zero vector. Other options are not yet available")
+
+        alf = self.alpha[0, 1]/self.alpha[0, 0]        
+        d = self.dvec[1:].sum()
+        sqrt2 = np.sqrt(2)
+
+        def make_lbd():
+            dd = self.dvec.shape[0]
+
+            def coef(a, dd):
+                if dd % 2 == 0:
+                    if a < dd // 2 - 1:
+                        return - (dd // 2) + a + 1
+                    else:
+                        return - (dd // 2) + a + 2
+                else:
+                    if a < (dd-1)//2:
+                        return -(dd-1)//2 + a
+                    else:
+                        return -(dd-1)//2 + a + 1
+
+            dsum = self.dvec[1:].cumsum()
+            lbd = np.concatenate([np.ones(self.dvec[a+1])*coef(a, dd)
+                                  for a in range(dsum.shape[0])])
+            # return .5 + lbd / lbd.sum()
+            return lbd
+        lbd = make_lbd()
+        
+        def getQ():
+            """ algorithm: find a basis in linear span of Y Y1
+            orthogonal to Y
+            """
+            u, s, v = np.linalg.svd(
+                np.concatenate([X, X1], axis=1), full_matrices=False)
+            k = (s > 1e-14).sum()
+            good = u[:, :k]@v[:k, :k]
+            qs = null_space(X.T@good)
+            Q, _ = np.linalg.qr(good@qs)
+            return Q
+        
+        # Q, s, _ = la.svd(Y1 - Y@Y.T@Y1, full_matrices=False)
+        # Q = Q[:, :np.sum(np.abs(s) > 1e-14)]
+        Q = getQ()
+        k = Q.shape[1]
+        p = self.p
+
+        def asym(mat):
+            return 0.5*(mat - mat.T)
+        
+        def vec(A, R):
+            # for A, take all blocks [ij with i > j]
+            lret = []
+            for r in range(1, p+1):
+                gdc = self._g_idx                
+                if r not in gdc:
+                    continue
+                br, er = gdc[r]
+                for s in range(r+1, p+1):
+                    if s <= r:
+                        continue
+                    bs, es = gdc[s]
+                    lret.append(A[br:er, bs:es].reshape(-1)*sqrt2)
+
+            lret.append(R.reshape(-1))
+            return np.concatenate(lret)
+
+        def unvec(avec):
+            A = np.zeros((d, d))
+            R = np.zeros((k, d))
+            gdc = self._g_idx
+            be = 0
+            for r in range(1, p+1):
+                if r not in gdc:
+                    continue
+                br, er = gdc[r]
+                for s in range(r+1, p+1):
+                    if s <= r:
+                        continue
+                    bs, es = gdc[s]
+                    dr = er - br
+                    ds = es - bs
+                    A[br:er, bs:es] = (avec[be: be+dr*ds]/sqrt2).reshape(dr, ds)
+                    A[bs:es, br:er] = - A[br:er, bs:es].T
+                    be += dr*ds
+            R = avec[be:].reshape(k, d)
+            return A, R
+
+        XQ = np.array(np.bmat([X, Q]))
+        # X2 = XQ.T@X1@X1.T@XQ
+        X2 = XQ.T@(X1*lbd[None, :])@X1.T@XQ
+        
+        def dist(v):
+            #  = (dist0a(v) - d)*2
+            alf = self.alpha[0, 1] / self.alpha[0, 0]
+            A, R = unvec(v)
+            x_mat = np.array(
+                np.bmat([[2*alf*A, -R.T], [R, zeros((k, k))]]))
+            exh = expm(x_mat)
+            ex = expm((1-2*alf)*A)
+            Mid = (ex*lbd[None, :])@ex.T
+            return (- trace(X2@exh[:, :d]@Mid@exh[:, :d].T))
+
+        def jac(v):
+            alf = self.alpha[0, 1] / self.alpha[0, 0]
+            gdc = self._g_idx
+            A, R = unvec(v)
+            x_mat = np.array(
+                np.bmat([[2*alf*A, -R.T], [R, zeros((k, k))]]))
+            exh = expm(x_mat)
+            ex = expm((1-2*alf)*A)
+
+            blk = np.zeros_like(exh)
+            blk[:d, :] = (ex*lbd[None, :])@ex.T@exh[:, :d].T
+            blkA = (lbd[:, None]*ex.T)@exh[:, :d].T@X2@exh[:, :d]
+
+            fexh = 2*expm_frechet(x_mat, blk@X2)[1]
+            fex = 2*expm_frechet((1-2*alf)*A, blkA)[1]
+
+            for r in range(1, p+1):
+                if r not in gdc:
+                    continue
+                br, er = gdc[r]            
+                fexh[br:br, br:br] = 0
+                fex[br:br, br:br] = 0
+
+            return vec(
+                (1-2*alf)*asym(fex) + 2*alf*asym(fexh[:d, :d]),
+                fexh[d:, :d] - fexh[:d, d:].T)    
+        
+        def make_vec(xi):
+            return vec(X.T@xi, Q.T@xi)
+
+        def hessp(v, xi):
+            dlt = 1e-8
+            return (jac(v+dlt*xi) - jac(v))/dlt
+
+        def conv_to_tan(A, R):
+            return X@A + Q@R
+
+        from scipy.optimize import minimize
+        # A0, R0 = make_init()
+        # x0 = vec(A0, R0)
+        adim = (self.dvec[1:].sum()*self.dvec[1:].sum() -
+                (self.dvec[1:]*self.dvec[1:]).sum()) // 2
+        tdim = d*k + adim
+
+        x0 = np.zeros(tdim)
+        
+        def printxk(xk):
+            print(la.norm(jac(xk)), dist(xk))
+
+        if show_steps:
+            callback = printxk
+        else:
+            callback = None
+
+        if self.log_gtol is None:
+            res = minimize(dist, x0, method=self.log_method,
+                           jac=jac, hessp=hessp, callback=callback)
+        else:
+            res = minimize(dist, x0, method=self.log_method,
+                           jac=jac, hessp=hessp, callback=callback,            
+                           options={'gtol': self.log_gtol})
+        stat = [(a, res[a]) for a in res.keys() if a not in ['x', 'jac']]
+        A1, R1 = unvec(res['x'])
+        if self.log_stats:
+            return conv_to_tan(A1, R1), stat
+        else:
+            return conv_to_tan(A1, R1)    
     

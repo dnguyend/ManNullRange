@@ -4,8 +4,9 @@ import numpy.linalg as la
 import numpy as np
 from numpy import trace, zeros_like, bmat, zeros
 from numpy.random import randn
-from scipy.linalg import expm
-from .tools import vech, unvech
+from scipy.linalg import expm, expm_frechet, logm, null_space
+from scipy.optimize import minimize
+from .tools import vech, unvech, vecah, unvecah, asym
 
 
 if not hasattr(__builtins__, "xrange"):
@@ -28,12 +29,15 @@ class RealStiefel(NullRangeManifold):
 
     Parameters
     ----------
-    n, d     : # of rows and columns of the manifold point
-    alpha    : array of size 2, alpha  > 0
-
+    n, d         : # of rows and columns of the manifold point
+    alpha        : array of size 2, alpha  > 0
+    log_callback : print out progress when running log
+    log_method   : None is trust-krylov. Otherwise
+                   one of trust-ncg or trust-krylov
     """
     
-    def __init__(self, n, d, alpha=None):
+    def __init__(self, n, d, alpha=None, log_stats=False,
+                 log_method=None):
         self._point_layout = 1
         self.n = n
         self.d = d
@@ -44,6 +48,15 @@ class RealStiefel(NullRangeManifold):
             self.alpha = np.array([1, .5])
         else:
             self.alpha = alpha
+        self.log_stats = log_stats
+        if log_method is None:
+            self.log_method = 'trust-krylov'
+        elif log_method.lower() in ['trust-ncg', 'trust-krylov', 'l-bfgs-b']:
+            self.log_method = log_method.lower()
+        else:
+            raise(ValueError(
+                'log method must be one of trust-ncg or trust-krylov'))
+        self.log_gtol = None
 
     def inner(self, X, eta1, eta2=None):
         """ Inner product (Riemannian metric) on the tangent space.
@@ -228,8 +241,8 @@ class RealStiefel(NullRangeManifold):
         A = Y.T @eta
         x_mat = bmat([[2*alf*A, -R.T],
                       [R, zeros((self.d, self.d))]])
-        return bmat([Y, Yp]) @ expm(x_mat)[:, :self.d] @ \
-            expm((1-2*alf)*A)
+        return np.array(
+            bmat([Y, Yp]) @ expm(x_mat)[:, :self.d] @ expm((1-2*alf)*A))
 
     def exp_alt(self, Y, eta):
         """ Geodesics, alternative formula
@@ -240,3 +253,140 @@ class RealStiefel(NullRangeManifold):
                       [np.eye(self.d), A]])
         return np.array(
             (bmat([Y, eta]) @ expm(e_mat))[:, :self.d] @ expm((1-2*alf)*A))
+
+    def dist(self, X, Y):
+        lg = self.log(self, X, Y, show_steps=False, init_type=1)
+        return np.sqrt(self.norm(X, lg))
+
+    def log(self, Y, Y1, show_steps=False, init_type=1):
+        """Inverse of exp
+
+        Parameters
+        ----------
+        Y    : a manifold point
+        Y1  : tangent vector
+
+        Returns
+        ----------
+        eta such that self.exp(X, eta) = Y1
+
+        Algorithm: use the scipy.optimize trust region method
+        to minimize in eta ||self.exp(Y, eta) - Y1||_F^2
+        _F is the Frobenius norm in R^{n\times d}
+        The jacobian could be computed by the expm_frechet function
+        """
+        alf = self.alpha[1]/self.alpha[0]
+        d = self.d
+        adim = (d*(d-1))//2
+
+        def getQ():
+            """ algorithm: find a basis in linear span of Y Y1
+            orthogonal to Y
+            """
+            u, s, v = np.linalg.svd(
+                np.concatenate([Y, Y1], axis=1), full_matrices=False)
+            k = (s > 1e-14).sum()
+            good = u[:, :k]@v[:k, :k]
+            qs = null_space(Y.T@good)
+            Q, _ = np.linalg.qr(good@qs)
+            return Q
+        
+        # Q, s, _ = la.svd(Y1 - Y@Y.T@Y1, full_matrices=False)
+        # Q = Q[:, :np.sum(np.abs(s) > 1e-14)]
+        Q = getQ()
+        k = Q.shape[1]
+        if k == 0:
+            # Y1 and Y has the same linear span
+            A = logm(Y.T @ Y1)
+
+            if self.log_stats:
+                return Y@A, [('success', True), ('message', 'aligment')]
+            return Y@A
+        
+        def vec(A, R):
+            return np.concatenate(
+                [vecah(A), R.reshape(-1)])
+
+        def unvec(avec):
+            return unvecah(avec[:adim]), avec[adim:].reshape(k, d)
+
+        def dist(v):
+            A, R = unvec(v)
+            ex2 = expm(
+                np.array(
+                    bmat([[2*alf*A, -R.T], [R, np.zeros((k, k))]])))
+            M = ex2[:d, :d]
+            N = ex2[d:, :d]
+
+            return -np.trace(Y1.T@(Y@M+Q@N)@expm((1-2*alf)*A))
+
+        def jac(v):
+            A, R = unvec(v)
+            ex1 = expm((1-2*alf)*A)
+
+            mat = np.array(bmat([[2*alf*A, -R.T], [R, np.zeros((k, k))]]))
+            E = np.array(bmat(
+                [[ex1@Y1.T@Y, ex1@Y1.T@Q],
+                 [np.zeros_like(R), np.zeros((k, k))]]))
+
+            ex2, fe2 = expm_frechet(mat, E)
+            M = ex2[:d, :d]
+            N = ex2[d:, :d]
+            YMQN = (Y@M+Q@N)
+
+            partA = asym(
+                (1-2*alf)*expm_frechet((1-2*alf)*A, Y1.T@YMQN)[1])
+
+            partA += 2*alf*asym(fe2[:d, :d])
+            partR = -(fe2[:d, d:].T - fe2[d:, :d])
+
+            return vec(partA, partR)
+    
+        def hessp(v, xi):
+            dlt = 1e-8
+            return (jac(v+dlt*xi) - jac(v))/dlt
+
+        def conv_to_tan(A, R):
+            return Y@A + Q@R
+        
+        eta0 = self.proj(Y, Y1-Y)
+        A0 = asym(Y.T@eta0)
+        R0 = Q.T@eta0 - (Q.T@Y)@(Y.T@eta0)
+        
+        if init_type != 0:
+            x0 = vec(A0, R0)
+        else:
+            x0 = np.zeros(adim + self.d*k)
+                    
+        def printxk(xk):
+            print(la.norm(jac(xk)), dist(xk))
+
+        if show_steps:
+            callback = printxk
+        else:
+            callback = None
+
+        if self.log_gtol is None:
+            if self.log_method.startswith('trust'):
+                res = minimize(dist, x0, method=self.log_method,
+                               jac=jac, hessp=hessp, callback=callback)
+            else:
+                res = minimize(dist, x0, method=self.log_method,
+                               jac=jac, callback=callback)                
+        else:
+            if self.log_method.startswith('trust'):            
+                res = minimize(dist, x0, method=self.log_method,
+                               jac=jac, hessp=hessp, callback=callback,            
+                               options={'gtol': self.log_gtol})
+            else:
+                res = minimize(dist, x0, method=self.log_method,
+                               jac=jac, callback=callback,
+                               options={'gtol': self.log_gtol})
+                
+        stat = [(a, res[a]) for a in res.keys() if a not in ['x', 'jac']]
+        A1, R1 = unvec(res['x'])
+        if self.log_stats:
+            return conv_to_tan(A1, R1), stat
+        else:
+            return conv_to_tan(A1, R1)            
+

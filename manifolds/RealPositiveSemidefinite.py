@@ -2,10 +2,12 @@ from __future__ import division
 from .NullRangeManifold import NullRangeManifold
 import numpy as np
 import numpy.linalg as la
-from scipy.linalg import null_space, expm
+from scipy.linalg import null_space, expm, expm_frechet, logm
+from scipy.optimize import minimize
 from numpy import trace, zeros, allclose
 from numpy.random import randn
-from .tools import sym, asym, vecah, unvecah, extended_lyapunov
+from .tools import (sym, asym, vecah, unvecah, extended_lyapunov,
+                    vech, unvech)
 
 
 if not hasattr(__builtins__, "xrange"):
@@ -73,6 +75,16 @@ class psd_point(object):
             Y0 = null_space(self._Y.T)
             self._Y0 = Y0
         return self._Y0
+
+    def _add_point(self, other):
+        """ not safe, a cheap retraction. Only to test
+        derivatives (other is small so the new point is close enough to
+        the manifold)
+        """
+        return psd_point(self.Y + other.tY, self.P + other.tP)
+
+    def copy(self):
+        return psd_point(self.Y, self.P)
     
 
 class psd_ambient(object):
@@ -144,7 +156,8 @@ class RealPositiveSemidefinite(NullRangeManifold):
     beta     : positive number. Metric scale on P
     """
     
-    def __init__(self, n, p, alpha=None, beta=1):
+    def __init__(self, n, p, alpha=None, beta=1, log_gtol=1e-4,
+                 log_stats=False):
         self._point_layout = 1
         self.n = n
         self.p = p
@@ -162,6 +175,8 @@ class RealPositiveSemidefinite(NullRangeManifold):
         else:
             self.alpha = alpha
         self.beta = beta
+        self.log_gtol = log_gtol
+        self.log_stats = log_stats
 
     def inner(self, S, Ba, Bb=None):
         """Inner product (Riemannian metric, as an inner product on
@@ -497,4 +512,159 @@ class RealPositiveSemidefinite(NullRangeManifold):
         Pt = np.array(sqrtP @ ePinn@sqrtP)
         return psd_point(Yt, Pt)
 
+    def log(self, X, X1, show_steps=False):
+        """Inverse of exp
+
+        Parameters
+        ----------
+        X    : a manifold point
+        X1  : tangent vector
+
+        Returns
+        ----------
+        eta such that self.exp(X, eta) = X1
+
+        Algorithm: use the scipy.optimize trust region method
+        to minimize in eta ||full(self.exp(X, eta)) - full(X1)||_F^2
+        where full(X) = X.Y@X.P@X.Y.T
+        _F is the Frobenius norm in R^{n\times n}
+        The jacobian could be computed by the expm_frechet function
+        """
+        beta, alpha = self.beta, self.alpha
+        alf = self.alpha[1]/self.alpha[0]    
+        n, p = self.n, self.p
+        Q, s, _ = la.svd(X1.Y - X.Y@X.Y.T@X1.Y, full_matrices=False)
+        Q = Q[:, :np.sum(np.abs(s) > 1e-15)]
+        k = Q.shape[1]
+        if k == 0:
+            # X1.Y and X.Y has the same linear span
+            U = X1.Y.T @ X.Y
+            # U is orthogonal.
+            eta_P = X.P@logm(X.Pinv@U.T@X1.P@U)
+            if self.log_stats:
+                return psd_ambient(np.zeros_like(X.Y), eta_P), [('success', True),
+                                                                ('message', 'aligment')]
+            return psd_ambient(np.zeros_like(X.Y), eta_P)
+        
+        pdim = p*(p+1) // 2
+    
+        def vec(eta_P, R):
+            return np.concatenate(
+                [vech(eta_P), R.reshape(-1)])
+
+        def unvec(avec):
+            return unvech(avec[:pdim]), avec[pdim:].reshape(k, p)
+    
+        tp12 = trace(X1.P@X1.P)
+        YPY_l = np.bmat([X1.P@X1.Y.T@X.Y, X1.P@X1.Y.T@ Q])
+        YPY_r = np.bmat([[X.Y.T@X1.Y], [Q.T@X1.Y]])
+        YPY_rl = YPY_r@YPY_l
+    
+        def dist(v):
+            eta_P, R = unvec(v)
+            A = beta/alpha[1]*(X.Pinv@eta_P - eta_P@X.Pinv)
+            x_mat = np.array(
+                np.bmat([[2*alf*A, -R.T], [R, zeros((k, k))]]))
+            trYPY2 =  np.trace(
+                X.P @ expm(X.Pinv@eta_P) @ X.P @ expm(X.Pinv@eta_P))
+            trYPY = trace(
+                expm(x_mat)[:, :p] @
+                expm((1-2*alf)*A) @ X.P @ expm(X.Pinv@eta_P) @
+                expm(-(1-2*alf)*A) @ expm(x_mat)[:, :p].T @ YPY_rl)
+
+            return trYPY2 - 2*trYPY + tp12
+    
+        def jac(v):
+            eta_P, R = unvec(v)
+            A = beta/alpha[1]*(X.Pinv@eta_P - eta_P@X.Pinv)
+            x_mat = np.array(
+                np.bmat([[2*alf*A, -R.T], [R, zeros((k, k))]]))
+            ex1 = expm(X.Pinv@eta_P)
+            ex3 = expm((1-2*alf)*A)
+            exmat = expm(x_mat)
+            efPinvD = expm_frechet(
+                X.Pinv@eta_P,
+                X.P @ ex1 @ X.P - ex3.T @ exmat[:, :p].T @ YPY_rl @
+                exmat[:, :p] @ ex3 @ X.P)
+            efxmat = expm_frechet(
+                x_mat,
+                np.bmat([[
+                    ex3 @ X.P @ ex1 @
+                    ex3.T @ exmat[:, :p].T @ YPY_rl +
+                    ex3 @ X.P @ ex1 @ ex3.T @ exmat[:, :p].T @ YPY_rl],
+                         [np.zeros((k, p+k))]]))
+
+            efA1 = expm_frechet(
+                (1-2*alf)*A,
+                (1-2*alf)*beta/alpha[1]*(
+                    X.P @ ex1 @
+                    ex3.T @ exmat[:, :p].T @ YPY_rl @ exmat[:, :p]))
+
+            efA2 = expm_frechet(
+                (1-2*alf)*A, exmat[:, :p].T @ YPY_rl @
+                exmat[:, :p] @ ex3 @ X.P @ ex1)
+
+            grP = 2*efPinvD[1] @ X.Pinv
+            grP += -2*2*alf*beta/alpha[1]*(efxmat[1][:p, :p] @ X.Pinv -
+                                           X.Pinv @ efxmat[1][:p, :p])
+            grP += -2*efA1[1] @ X.Pinv + 2*X.Pinv @ efA1[1]
+            grP += 2*(1-2*alf)*beta/alpha[1] * (
+                ex3.T @ efA2[1]@ ex3.T @ X.Pinv - X.Pinv @ ex3.T @ efA2[1]@ ex3.T)
+            grR = -2*(-efxmat[1][p:, :p] + efxmat[1][:p, p:].T)
+            return vec(sym(grP), grR)
+
+        def hessp(v, xi):
+            dlt = 1e-6
+            return (jac(v+dlt*xi) - jac(v))/dlt
+
+        def conv_to_tan(eta_P, R):
+            A = beta/alpha[1]*(X.Pinv@eta_P - eta_P@X.Pinv)
+            return psd_ambient(X.Y@A + Q@R, eta_P)
+
+        Cmat = np.bmat([X1.Y.T@X.Y, X1.Y.T@Q])
+
+        def calc_U(eta_P, R):
+            A = beta/alpha[1]*(X.Pinv@eta_P - eta_P@X.Pinv)
+            x_mat = np.array(
+                np.bmat([[2*alf*A, -R.T], [R, zeros((k, k))]]))
+            MN = expm(x_mat)[:, :p]
+            ex1 = expm((1-2*alf)*A)
+
+            U = Cmat @ MN @ ex1            
+            return U
+
+        def make_init():
+            # idea: good direction is Y1P1Y1.T - YPY.T
+            # convert this to Stiefel coordnate
+            if True:
+                R0 = Q.T @ (X1.Y@X1.P@X1.Y.T - X.Y@X.P@X.Y.T)@X.Y@X.Pinv
+                RHS = alpha[1]*((X.Y.T@X1.Y)@X1.P@(X1.Y.T@X.Y) - X.P)
+                etaP0 = extended_lyapunov(
+                    alpha[1], beta, X.P, RHS, X.evl, X.evec)
+                return vec(etaP0, R0)
+            else:
+                xir = self.randvec(X)
+                xirR = Q.T@xir.tY - (Q.T@X.Y)@(X.Y.T@xir.tY)    
+                return vec(xir.tP, xirR)        
+    
+        x0 = make_init()
+        
+        def printxk(xk):
+            print(la.norm(jac(xk)), dist(xk))
+
+        if show_steps:
+            callback = printxk
+        else:
+            callback = None
+        res = minimize(dist, np.zeros_like(x0), method='trust-ncg',
+                       jac=jac, hessp=hessp, callback=callback,
+                       options={'gtol': self.log_gtol})
+            
+        A1, R1 = unvec(res['x'])
+        if self.log_stats:
+            return conv_to_tan(A1, R1), [(a, res[a]) for a in res.keys() if a not in ['x', 'jac']]
+        else:
+            return conv_to_tan(A1, R1)
+    
+        
 

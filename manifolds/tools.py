@@ -336,6 +336,31 @@ def extended_lyapunov(alpha1, beta, P, B, Peig=None, Pevec=None):
                                          alpha1-2*beta)) @ Pevec.T
 
 
+def LE_lyapunov(alpha1, beta, P, B, Peig=None, Pevec=None):
+    """ solve the Lyapunov-type equation:
+    (alpha_1)X + \beta(P^2X-2PXP +XP^2) = B
+    Peig and Pevec are precomputed eigenvalue decomposition of P
+
+    Parameters
+    ----------
+    alpha, beta: scalar coefficients of the equation, positive numbers
+    P   : Positive definite matrix coefficient
+    B   : the right hand side
+
+    Returns
+    ----------
+    P
+
+    """
+
+    if Peig is None:
+        Peig, Pevec = la.eigh(P)
+    Peig2 = Peig*Peig
+    return Pevec @ ((Pevec.T@B@Pevec) / (
+        beta*(-2*Peig[:, None] * Peig[None, :] +
+              Peig2[:, None] + Peig2[None, :]) + alpha1)) @ Pevec.T
+
+
 def complex_extended_lyapunov(alpha, beta, P, B, Peig=None, Pevec=None):
     """ solve the Lyapunov-type equation:
     (alpha-2beta)X + \beta(PXP^{-1} + P^{-1}XP = B
@@ -504,3 +529,22 @@ def calc_complex_stiefel_geodesics(Y, eta, rtio, t=1):
     x_mat = np.bmat([[2*rtio*A, -R.T.conj()], [R, zeros((p, p))]])
     return np.bmat([Y, Yp]) @ expm(t*x_mat)[:, :p] @ \
         expm(t*(1-2*rtio)*A)
+
+
+def sinc(x):
+    if np.abs(x) <= 1e-20:
+        return 1
+    else:
+        return np.sin(x)/x
+
+
+def sinc1(x):
+    if np.abs(x) < 1e-6:
+        return -1/3 + x*x/2/3/5
+    return (x*np.cos(x)-np.sin(x))/x/x/x
+
+
+def sinc2(x):
+    if np.abs(x) < 1e-3:
+        return 1/15 - x*x/210 + x*x*x*x / 7560
+    return -((x*x-3)*np.sin(x) + 3*x*np.cos(x))/x**5    
